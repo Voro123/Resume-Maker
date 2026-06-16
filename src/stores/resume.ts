@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import type { PromptTemplate, APIConfig, ChatMessage } from '@/types/resume'
+import { useChatStore } from './chat'
 import OpenAI from 'openai'
 import {
   generateResumeViaBackend,
@@ -108,6 +109,10 @@ export const useResumeStore = defineStore('resume', () => {
         // 保存到本地存储
         saveToLocalStorage()
         
+        // 生成成功后清除聊天记录
+        const chatStore = useChatStore()
+        chatStore.clearMessages()
+        
         return {
           html: generatedHTML.value,
           reasoning: result.reasoning || '',
@@ -125,9 +130,21 @@ export const useResumeStore = defineStore('resume', () => {
       const response = await (client as any).chat.completions.create({
         model: apiConfig.model,
         messages: [
-          {
+        {
             role: 'system',
-            content: '你是一个专业的简历生成助手。根据用户的提示词，生成完整的、可直接打印的简历HTML代码。要求：1) 包含完整的HTML结构和内联CSS样式；2) A4纸张大小(210mm×297mm)；3) 避免分页截断；4) 专业美观的设计风格。直接输出HTML代码，不要添加任何解释文字。'
+            content: `你是一个专业的简历生成助手。根据用户的提示词，生成完整的、可直接打印的简历 HTML 代码。
+
+硬性要求：
+1. 只输出 HTML 代码，不要输出解释文字、Markdown 代码块。
+2. 必须包含完整 HTML 结构和内联 CSS。
+3. 页面尺寸为 A4：210mm × 297mm，主容器宽度固定为 794px，最小高度 1123px。
+4. 所有元素必须使用 box-sizing: border-box。
+5. 不要使用会导致内容错位的负 margin、transform translate、position absolute 叠放正文。
+6. 头像区域必须使用固定宽高容器，内部图片或文字必须水平垂直居中；如果没有真实图片，用文字头像时也必须居中，不得超出边框。
+7. 列表必须使用 ul/li 的标准结构，ul 设置 padding-left: 18px 到 24px，li 设置 line-height，不允许圆点和文字重叠。
+8. 如果使用自定义圆点，不要使用 list-style 和 ::before 同时生成双圆点；自定义圆点必须为 li 文本预留至少 16px 左侧空间。
+9. 时间线圆点、列表圆点、正文文本不能重叠。
+10. 避免分页截断，尽量让模块高度紧凑。`
           },
           {
             role: 'user',
