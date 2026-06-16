@@ -631,7 +631,7 @@ const createElementActionButton = (
   button.className = danger ? 'element-action-btn is-danger' : 'element-action-btn'
 
   button.style.width = '28px'
-  button.style.height = '24px'
+  button.style.height = '28px'
   button.style.border = 'none'
   button.style.borderRadius = '7px'
   button.style.display = 'flex'
@@ -639,7 +639,6 @@ const createElementActionButton = (
   button.style.justifyContent = 'center'
   button.style.cursor = 'pointer'
   button.style.fontSize = danger ? '18px' : '16px'
-  button.style.lineHeight = '1'
   button.style.color = danger ? '#fecaca' : '#dbeafe'
   button.style.background = 'transparent'
 
