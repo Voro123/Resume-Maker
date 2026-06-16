@@ -180,26 +180,25 @@ def generate_resume():
 - **不要输出任何解释文字**、注释、或多余内容
 - **第一个字符必须是 <!DOCTYPE html>**，最后一个字符必须是 </html>
 
-## 🎨 设计要求（请发挥极致创意）：
+## 🎨 设计要求（稳定优先）：
 
-### 1) 布局设计（自由选择最佳布局）：
-你可以根据内容特点选择以下任何一种布局，或创造你自己的布局：
+### 1) 布局设计（优先选择稳定、不易错位的布局）：
+推荐使用的布局（按稳定性排序）：
 
-**选项A：单栏布局**
+**选项A：单栏布局（最稳定，推荐）**
 - 经典从上到下的单栏设计
 - 适合内容较少或偏好简洁的用户
 
-**选项B：两栏布局（推荐用于内容较多的简历）**
+**选项B：两栏布局（内容较多时使用）**
 - 左侧边栏（宽度约30-35%）+ 主内容区（宽度约65-70%）
 - 左侧可放置：个人信息、联系方式、技能标签、语言能力
 - 右侧可放置：工作经历、项目经验、教育背景
 - 使用 CSS Grid 或 Flexbox 实现：`display: grid; grid-template-columns: 250px 1fr;`
 - **重要**：如果内容超过一页，第二页应该恢复为单栏布局，或者两栏继续但要确保内容不会被不合理地分割
 
-**选项C：创意布局**
-- 顶部大标题区 + 下方双栏
-- 左侧彩色背景区 + 右侧白色区
-- 或者任何你认为最美观的设计
+**选项C：创意布局（谨慎使用）**
+- 如果使用创意布局，必须确保头像、列表、时间线等元素不会错位
+- 禁止使用 position:absolute 布局正文内容
 
 ### 2) 视觉设计原则：
 - **配色方案**：使用专业、现代的配色（深蓝+白、深灰+浅灰、墨绿+米色、或渐变）
@@ -249,8 +248,7 @@ body {
 }
 
 .resume-section {
-    margin-bottom: 20px;
-    page-break-inside: avoid; /* 避免模块内部分页 */
+    margin-bottom: 18px;
 }
 
 /* 分页控制 */
@@ -269,7 +267,7 @@ body {
 
 **打印样式（必须包含）：**
 ```css
-@page { size: A4; margin: 15mm; }
+@page { size: A4; margin: 0; }
 
 @media print {
     body { margin: 0; padding: 0; }
@@ -279,14 +277,11 @@ body {
         box-shadow: none !important;
         box-sizing: border-box !important;
     }
-    .resume-section {
-        page-break-inside: avoid !important;
-    }
 }
 ```
 
 **注意**：
-- `@page { margin: 15mm; }` 由浏览器控制打印边距
+- `@page { margin: 0; }` 确保打印边距由前端控制
 - `.resume-container` 不要设置固定 padding，打印时宽度设为100%适应页面
 
 ### 5) 两栏布局的第二页处理：
@@ -323,8 +318,8 @@ body {
     outline: none;
     transition: all 0.2s ease;
     border-radius: 2px;
-    padding: 1px 2px;
-    margin: -1px -2px;
+    padding: 0;
+    margin: 0;
 }
 
 [contenteditable="true"]:hover {
@@ -352,10 +347,24 @@ body {
 - 编辑提示应该 subtle 而不突兀
 - 用户编辑后内容应保持原有的格式和样式
 
-## 🚀 发挥创意：
-请生成一份让人眼前一亮的专业简历！你可以：
-- 使用渐变背景、卡片式设计、时间线布局等现代设计元素
-- 根据伪数据的特点选择最合适的布局方式
+## 🚀 稳定排版硬性规则：
+- 优先使用普通文档流、flex、grid；禁止使用 position:absolute 布局正文内容。
+- 只允许装饰性小图标使用 absolute，正文、头像、列表、时间线内容不得 absolute 定位。
+- 禁止使用负 margin、transform translate 来对齐正文。
+- 禁止使用 ul/li 默认圆点和 ::before 自定义圆点同时存在。
+- 如果使用 ul/li，必须设置：
+  ul { padding-left: 18px; list-style-position: outside; }
+  li { padding-left: 4px; line-height: 1.6; margin-bottom: 6px; }
+- 如果使用自定义圆点，必须取消默认 list-style，并给文本容器预留至少 18px 左侧空间。
+- 头像必须使用固定尺寸容器，例如 120px × 120px；容器 display:flex; align-items:center; justify-content:center; overflow:hidden。
+- 文字头像不要再嵌套额外边框层；不要对头像文字使用 absolute、transform。
+- 不要给 .resume-section 设置 page-break-inside: avoid。
+- 不要在生成的 HTML 中写 @page margin:15mm，统一使用 @page { size:A4; margin:0; }。
+
+## 设计要求：
+请生成一份专业、稳定的简历！你可以：
+- 使用简洁的配色和布局
+- 确保头像、列表、时间线等元素不会错位
 - 确保设计既美观又实用，适合打印和PDF导出
 
 ## 外部依赖（必须引入）：

@@ -888,73 +888,12 @@ $transition-normal: 0.3s ease;
     box-sizing: border-box;
   }
 
-  // 兜底：防止 AI 生成的图片/头像撑破容器
+  // 防止 AI 生成的图片撑破容器
   :deep(img) {
     max-width: 100%;
     height: auto;
-    display: block;
   }
 
-  // 兜底：常见头像容器，统一居中和裁剪
-  :deep(.avatar),
-  :deep(.photo),
-  :deep(.profile-photo),
-  :deep(.avatar-box),
-  :deep(.photo-box) {
-    overflow: hidden;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-  }
-
-  :deep(.avatar img),
-  :deep(.photo img),
-  :deep(.profile-photo img),
-  :deep(.avatar-box img),
-  :deep(.photo-box img) {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-  }
-
-  // 兜底：修复 ul/li 圆点和文字重叠
-  :deep(ul),
-  :deep(ol) {
-    margin: 0;
-    padding-left: 1.4em;
-    list-style-position: outside;
-  }
-
-  :deep(li) {
-    position: relative;
-    padding-left: 0.2em;
-    margin-bottom: 0.35em;
-    line-height: 1.65;
-  }
-
-  :deep(li::marker) {
-    font-size: 0.85em;
-  }
-
-  // 兜底：如果 AI 用 before 自定义圆点，给文字留出空间
-  :deep(li::before) {
-    flex-shrink: 0;
-  }
-
-  // 兜底：时间线类元素不要让圆点覆盖正文
-  :deep(.timeline-item),
-  :deep(.experience-item),
-  :deep(.work-item) {
-    position: relative;
-  }
-
-  :deep(.timeline-item ul),
-  :deep(.experience-item ul),
-  :deep(.work-item ul) {
-    padding-left: 1.5em;
-  }
-  
   :deep(.resume-container) {
     width: 794px;
     min-height: 1123px;
