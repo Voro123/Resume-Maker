@@ -199,41 +199,49 @@
         </div>
         
         <!-- 输入底部操作栏 -->
-        <div class="input-footer">
-          <!-- 左侧：元素选择按钮 + 提示 -->
-          <div class="footer-left">
-            <el-tooltip :content="isSelectingElement ? '取消选择' : '选择元素'" placement="top">
+        <div class="chat-input-actions">
+          <!-- 左侧：工具按钮 -->
+          <div class="input-tools">
+            <el-tooltip content="选择简历元素用于 AI 修改" placement="top" :show-after="300">
               <el-button 
-                class="select-btn"
+                class="tool-btn"
                 :class="{ active: isSelectingElement }"
-                :type="isSelectingElement ? 'primary' : 'default'"
-                size="default"
                 @click="toggleElementSelector"
               >
                 <el-icon><Aim /></el-icon>
-                <span v-if="isSelectingElement" class="btn-text">取消</span>
               </el-button>
             </el-tooltip>
-            
-            <span class="input-tip">
-              <el-icon><InfoFilled /></el-icon>
-              Enter 发送，Ctrl+Enter 换行
-            </span>
+
+            <el-tooltip
+              :content="isHeightResizeMode ? '退出高度调整' : '调整高度'"
+              placement="top"
+              :show-after="400"
+              :hide-after="0"
+            >
+              <el-button
+                class="tool-btn"
+                :class="{ active: isHeightResizeMode }"
+                @click="toggleHeightResizeMode"
+              >
+                <el-icon><Rank /></el-icon>
+              </el-button>
+            </el-tooltip>
           </div>
-          
-          <!-- 右侧：发送按钮 -->
-          <el-button 
-            type="primary"
-            class="send-btn"
-            @click="handleSend"
-            :loading="chatStore.isLoading"
-            :disabled="!userInput.trim()"
-          >
-            <template #icon>
+
+          <!-- 右侧：发送区域 -->
+          <div class="send-area">
+            <span class="send-hint">Enter 发送，Ctrl+Enter 换行</span>
+            <el-button 
+              type="primary"
+              class="send-btn"
+              @click="handleSend"
+              :loading="chatStore.isLoading"
+              :disabled="!userInput.trim()"
+            >
               <el-icon><Promotion /></el-icon>
-            </template>
-            发送
-          </el-button>
+              发送
+            </el-button>
+          </div>
         </div>
       </div>
     </div>
@@ -245,7 +253,7 @@ import { ref, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import {
   ChatDotRound, Setting, MagicStick,
   ArrowRight, User, InfoFilled, Promotion, Tickets,
-  Aim, PriceTag, Close, Delete, Check
+  Aim, Rank, PriceTag, Close, Delete, Check
 } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useChatStore } from '@/stores/chat'
@@ -261,6 +269,7 @@ const messageListRef = ref<HTMLElement>()
 
 // 元素选择相关
 const isSelectingElement = ref(false)
+const isHeightResizeMode = ref(false)
 const selectedElements = ref<Array<{info: string}>>([])  // 存储多个选中的元素
 
 // 接受/拒绝按钮显示状态
@@ -305,6 +314,26 @@ const toggleElementSelector = () => {
       existingElements: isSelectingElement.value ? selectedElements.value.map(el => el.info) : []
     }
   }))
+}
+
+// 切换高度调整模式
+const toggleHeightResizeMode = () => {
+  isHeightResizeMode.value = !isHeightResizeMode.value
+
+  // 发送事件到预览组件
+  window.dispatchEvent(new CustomEvent('resume-height-resizer', {
+    detail: { active: isHeightResizeMode.value }
+  }))
+
+  // 进入高度调整模式时，退出元素选择模式
+  if (isHeightResizeMode.value) {
+    isSelectingElement.value = false
+    window.dispatchEvent(new CustomEvent('resume-element-selector', {
+      detail: { active: false }
+    }))
+
+    ElMessage.info('高度调整模式：点击简历中的模块后拖拽底部手柄')
+  }
 }
 
 // 清除所有选中的元素
@@ -1140,91 +1169,106 @@ const handleReject = () => {
   }
 }
 
-.input-footer {
+.chat-input-actions {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  justify-content: space-between;
+  gap: 10px;
   margin-top: 8px;
-  padding: 0 4px;
+}
+
+.input-tools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.tool-btn {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border-radius: 8px;
+  color: #6b7280;
+  background: #ffffff;
+  border: 1px solid #dcdfe6;
+  transition: all 0.18s ease;
+
+  .el-icon {
+    font-size: 16px;
+  }
+
+  &:hover {
+    color: #409eff;
+    border-color: #409eff;
+    background: #ecf5ff;
+  }
+
+  &.active {
+    color: #ffffff;
+    border-color: #409eff;
+    background: #409eff;
+    box-shadow: 0 2px 8px rgba(64, 158, 255, 0.3);
+  }
+}
+
+.send-area {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+
+.send-hint {
+  color: #a8abb2;
+  font-size: 11px;
+  line-height: 1.4;
+  white-space: nowrap;
+  opacity: 0.85;
+}
+
+.send-btn {
+  height: 34px;
+  min-width: 80px;
+  border-radius: 8px;
+  font-weight: 500;
+  font-size: 13px;
+  transition: all 0.2s;
   
-  .footer-left {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    
-    .select-btn {
-      display: flex;
-      align-items: center;
-      gap: 4px;
-      padding: 7px 12px;
-      border-radius: 8px;
-      transition: all 0.3s;
-      font-size: 13px;
-      
-      .el-icon {
-        font-size: 16px;
-      }
-      
-      .btn-text {
-        font-size: 12px;
-      }
-      
-      &:hover {
-        transform: translateY(-1px);
-        box-shadow: 0 2px 8px rgba(64, 158, 255, 0.2);
-      }
-      
-      &.active {
-        background: #409eff;
-        border-color: #409eff;
-        color: white;
-        animation: pulse-btn 2s infinite;
-      }
-      
-      @keyframes pulse-btn {
-        0%, 100% { 
-          box-shadow: 0 0 0 0 rgba(64, 158, 255, 0.4);
-        }
-        50% { 
-          box-shadow: 0 0 0 8px rgba(64, 158, 255, 0);
-        }
-      }
-    }
-    
-    .input-tip {
-      font-size: 12px;
-      color: #c0c4cc;
-      display: flex;
-      align-items: center;
-      gap: 4px;
-      transition: color 0.3s;
-      
-      .el-icon {
-        font-size: 12px;
-      }
-    }
+  .el-icon {
+    margin-right: 3px;
+    font-size: 13px;
   }
   
-  .send-btn {
-    border-radius: 8px;
-    padding: 8px 20px;
-    font-weight: 500;
-    transition: all 0.3s;
-    
-    &:not(:disabled):hover {
-      transform: translateY(-1px);
-      box-shadow: 0 4px 12px rgba(64, 158, 255, 0.4);
-    }
-    
-    &:disabled {
-      background: #a0cfff;
-      border-color: #a0cfff;
-    }
+  &:not(:disabled):hover {
+    transform: translateY(-1px);
+    box-shadow: 0 3px 10px rgba(64, 158, 255, 0.35);
+  }
+  
+  &:disabled {
+    background: #a0cfff;
+    border-color: #a0cfff;
   }
 }
 
 /* ==================== 响应式 ==================== */
 @media (max-width: 768px) {
+  .chat-input-actions {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  
+  .send-area {
+    width: 100%;
+    justify-content: space-between;
+  }
+  
+  .send-hint {
+    white-space: normal;
+  }
+  
   .message-body {
     max-width: 85%;
   }
