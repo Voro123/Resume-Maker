@@ -66,7 +66,7 @@
         class="resume-content" 
         v-html="resumeStore.generatedHTML" 
         ref="resumeContentRef"
-        :class="{ 'select-mode': isSelectMode, 'height-resize-mode': isHeightResizeMode, 'copy-mode': isCopyElementMode }"
+        :class="{ 'select-mode': isSelectMode, 'height-resize-mode': isHeightResizeMode }"
       ></div>
     </div>
   </div>
@@ -106,10 +106,10 @@ const heightResizeOverlay = ref<HTMLElement | null>(null)
 const heightResizeHoveredElement = ref<HTMLElement | null>(null)
 const heightResizeHoverOverlay = ref<HTMLElement | null>(null)
 
-// 复制元素模式相关状态
-const isCopyElementMode = ref(false)
-const copyHoveredElement = ref<HTMLElement | null>(null)
-const copyHoverOverlay = ref<HTMLElement | null>(null)
+// 常态点击聚焦元素操作：复制 / 删除
+const elementActionTarget = ref<HTMLElement | null>(null)
+const elementActionOverlay = ref<HTMLElement | null>(null)
+const elementActionFocusOverlay = ref<HTMLElement | null>(null)
 
 // undo/redo 状态
 type HeightResizeHistoryItem = {
@@ -135,14 +135,12 @@ let selectingLock = false
 // 工具模式提示
 const activeToolTip = computed(() => {
   if (isSelectMode.value) return 'AI定位模式：点击简历元素后，可在对话框中描述修改需求'
-  if (isCopyElementMode.value) return '复制模式：点击任意简历元素，将在原位置后复制一份'
   if (isHeightResizeMode.value) return '调高模式：点击模块后，拖拽底部手柄调整高度'
   return ''
 })
 
 const activeToolClass = computed(() => {
   if (isSelectMode.value) return 'is-select'
-  if (isCopyElementMode.value) return 'is-copy'
   if (isHeightResizeMode.value) return 'is-resize'
   return ''
 })
@@ -627,6 +625,9 @@ const handleHeightResizeScroll = () => {
 
 // 进入高度调整模式
 const enterHeightResizeMode = () => {
+  // 清空复制/删除聚焦
+  clearElementActionFocus()
+
   isHeightResizeMode.value = true
 
   // 避免和原来的 AI 选元素模式冲突
@@ -717,10 +718,6 @@ const cleanupHeightResizeMode = () => {
 const handleHeightResizerEvent = (event: CustomEvent) => {
   if (event.detail.active) {
     // 确保关掉其他模式
-    if (isCopyElementMode.value) {
-      exitCopyElementMode()
-    }
-
     if (isSelectMode.value) {
       exitSelectMode()
     }
@@ -749,36 +746,121 @@ const handleElementCopierEvent = (event: CustomEvent) => {
   }
 }
 
-// ==================== 复制元素模式相关函数 ====================
+// ==================== 常态点击聚焦元素操作：复制 / 删除 ====================
 
-// 移除复制 hover 蒙层
-const removeCopyHoverOverlay = () => {
-  if (copyHoverOverlay.value) {
-    copyHoverOverlay.value.remove()
-    copyHoverOverlay.value = null
+const shouldSuppressElementActions = () => {
+  return (
+    isSelectMode.value ||
+    isHeightResizeMode.value ||
+    isResizingHeight ||
+    resumeStore.isGenerating ||
+    !resumeStore.generatedHTML
+  )
+}
+
+// ==================== 点击聚焦逻辑 ====================
+
+const handleElementActionClick = (e: MouseEvent) => {
+  if (shouldSuppressElementActions()) {
+    removeElementActionOverlay()
+    removeElementActionFocusOverlay()
+    elementActionTarget.value = null
+    return
+  }
+
+  const rawTarget = e.target as HTMLElement
+
+  // 点击工具条本身，不重新选择元素
+  if (rawTarget.closest('.element-action-toolbar')) {
+    return
+  }
+
+  // 避免和动态 overlay 互相干扰
+  if (
+    rawTarget.closest('.element-select-overlay') ||
+    rawTarget.closest('.element-selected-overlay') ||
+    rawTarget.closest('.height-resize-overlay') ||
+    rawTarget.closest('.height-resize-hover-overlay')
+  ) {
+    return
+  }
+
+  if (rawTarget === resumeContentRef.value) {
+    clearElementActionFocus()
+    return
+  }
+
+  const target = findSelectableElement(rawTarget)
+
+  if (!target || target === resumeContentRef.value) {
+    clearElementActionFocus()
+    return
+  }
+
+  elementActionTarget.value = target
+  showElementActionFocusOverlay(target)
+  showElementActionOverlay(target)
+}
+
+const handleElementActionGlobalClick = (e: MouseEvent) => {
+  if (!elementActionTarget.value) return
+
+  const target = e.target as HTMLElement | null
+  if (!target) return
+
+  // 点击工具条，不关闭
+  if (target.closest('.element-action-toolbar')) {
+    return
+  }
+
+  // 点击简历内部，让 handleElementActionClick 重新选择或清理
+  if (resumeContentRef.value?.contains(target)) {
+    return
+  }
+
+  clearElementActionFocus()
+}
+
+const handleElementActionKeydown = (e: KeyboardEvent) => {
+  if (e.key !== 'Escape') return
+
+  clearElementActionFocus()
+}
+
+// ==================== 聚焦框和工具条 ====================
+
+const clearElementActionFocus = () => {
+  removeElementActionOverlay()
+  removeElementActionFocusOverlay()
+  elementActionTarget.value = null
+}
+
+const removeElementActionFocusOverlay = () => {
+  if (elementActionFocusOverlay.value) {
+    elementActionFocusOverlay.value.remove()
+    elementActionFocusOverlay.value = null
   }
 }
 
-// 显示复制 hover 蒙层（紫色）
-const showCopyHoverOverlay = (target: HTMLElement) => {
+const showElementActionFocusOverlay = (target: HTMLElement) => {
   const rect = target.getBoundingClientRect()
 
-  let overlay = copyHoverOverlay.value
+  let overlay = elementActionFocusOverlay.value
 
   if (!overlay) {
     overlay = document.createElement('div')
-    overlay.className = 'element-copy-hover-overlay'
+    overlay.className = 'element-action-focus-overlay'
     overlay.style.position = 'fixed'
     overlay.style.pointerEvents = 'none'
-    overlay.style.zIndex = '9999'
+    overlay.style.zIndex = '10010'
     overlay.style.borderRadius = '3px'
-    overlay.style.backgroundColor = 'rgba(126, 87, 194, 0.10)'
-    overlay.style.outline = '2px dashed rgba(126, 87, 194, 0.9)'
+    overlay.style.backgroundColor = 'rgba(64, 158, 255, 0.08)'
+    overlay.style.outline = '2px solid rgba(64, 158, 255, 0.75)'
     overlay.style.outlineOffset = '-1px'
     overlay.style.transition = 'all 0.12s ease'
     document.body.appendChild(overlay)
 
-    copyHoverOverlay.value = overlay
+    elementActionFocusOverlay.value = overlay
   }
 
   overlay.style.top = `${rect.top}px`
@@ -788,84 +870,143 @@ const showCopyHoverOverlay = (target: HTMLElement) => {
   overlay.style.display = 'block'
 }
 
-// 复制元素鼠标移动
-const handleCopyElementMouseMove = (e: MouseEvent) => {
-  if (!isCopyElementMode.value) return
-
-  const rawTarget = e.target as HTMLElement
-
-  if (rawTarget === resumeContentRef.value) {
-    copyHoveredElement.value = null
-    removeCopyHoverOverlay()
-    return
+const removeElementActionOverlay = () => {
+  if (elementActionOverlay.value) {
+    elementActionOverlay.value.remove()
+    elementActionOverlay.value = null
   }
-
-  const target = findSelectableElement(rawTarget)
-
-  if (!target || target === resumeContentRef.value) {
-    copyHoveredElement.value = null
-    removeCopyHoverOverlay()
-    return
-  }
-
-  copyHoveredElement.value = target
-  showCopyHoverOverlay(target)
-
-  e.stopPropagation()
 }
 
-// 复制元素鼠标离开
-const handleCopyElementMouseLeave = () => {
-  if (!isCopyElementMode.value) return
+const showElementActionOverlay = (target: HTMLElement) => {
+  const rect = target.getBoundingClientRect()
 
-  copyHoveredElement.value = null
-  removeCopyHoverOverlay()
+  let overlay = elementActionOverlay.value
+
+  if (!overlay) {
+    overlay = document.createElement('div')
+    overlay.className = 'element-action-toolbar'
+    overlay.style.position = 'fixed'
+    overlay.style.display = 'flex'
+    overlay.style.alignItems = 'center'
+    overlay.style.gap = '4px'
+    overlay.style.padding = '4px'
+    overlay.style.borderRadius = '10px'
+    overlay.style.background = 'rgba(17, 24, 39, 0.92)'
+    overlay.style.boxShadow = '0 6px 16px rgba(0, 0, 0, 0.18)'
+    overlay.style.zIndex = '10030'
+    overlay.style.pointerEvents = 'auto'
+
+    const copyBtn = createElementActionButton('复制', '⧉', handleCopyActionClick)
+    const deleteBtn = createElementActionButton('删除', '×', handleDeleteActionClick, true)
+
+    overlay.appendChild(copyBtn)
+    overlay.appendChild(deleteBtn)
+
+    document.body.appendChild(overlay)
+    elementActionOverlay.value = overlay
+  }
+
+  const overlayWidth = 72
+  const overlayHeight = 32
+
+  let top = rect.top - overlayHeight - 6
+  let left = rect.right - overlayWidth
+
+  if (top < 4) {
+    top = rect.top + 6
+  }
+
+  if (left < 4) {
+    left = rect.left
+  }
+
+  const maxLeft = window.innerWidth - overlayWidth - 4
+  if (left > maxLeft) {
+    left = maxLeft
+  }
+
+  overlay.style.top = `${top}px`
+  overlay.style.left = `${left}px`
+  overlay.style.display = 'flex'
 }
 
-// 复制元素点击
-const handleCopyElementClick = (e: MouseEvent) => {
-  if (!isCopyElementMode.value) return
+const createElementActionButton = (
+  title: string,
+  text: string,
+  handler: (e: MouseEvent) => void,
+  danger = false
+): HTMLButtonElement => {
+  const button = document.createElement('button')
+  button.type = 'button'
+  button.title = title
+  button.innerText = text
+  button.className = danger ? 'element-action-btn is-danger' : 'element-action-btn'
 
+  button.style.width = '28px'
+  button.style.height = '24px'
+  button.style.border = 'none'
+  button.style.borderRadius = '7px'
+  button.style.display = 'flex'
+  button.style.alignItems = 'center'
+  button.style.justifyContent = 'center'
+  button.style.cursor = 'pointer'
+  button.style.fontSize = danger ? '18px' : '16px'
+  button.style.lineHeight = '1'
+  button.style.color = danger ? '#fecaca' : '#dbeafe'
+  button.style.background = 'transparent'
+
+  button.addEventListener('mouseenter', () => {
+    button.style.background = danger ? 'rgba(239, 68, 68, 0.22)' : 'rgba(59, 130, 246, 0.22)'
+  })
+
+  button.addEventListener('mouseleave', () => {
+    button.style.background = 'transparent'
+  })
+
+  button.addEventListener('click', handler)
+
+  return button
+}
+
+// ==================== 复制/删除操作 ====================
+
+const handleCopyActionClick = (e: MouseEvent) => {
   e.preventDefault()
   e.stopPropagation()
 
-  const rawTarget = e.target as HTMLElement
+  const target = elementActionTarget.value
 
-  if (rawTarget === resumeContentRef.value) {
-    exitCopyElementMode()
-    notifyCopyModeInactive()
+  if (!target || !resumeContentRef.value?.contains(target)) {
     return
   }
 
-  const target = findSelectableElement(rawTarget)
+  const cloned = copyElementAfterSelf(target)
 
-  if (!target || target === resumeContentRef.value) {
-    exitCopyElementMode()
-    notifyCopyModeInactive()
-    return
+  if (cloned) {
+    elementActionTarget.value = cloned
+
+    requestAnimationFrame(() => {
+      showElementActionFocusOverlay(cloned)
+      showElementActionOverlay(cloned)
+    })
   }
-
-  copyElementAfterSelf(target)
-
-  exitCopyElementMode()
-  notifyCopyModeInactive()
 }
 
-// 复制元素到自身后面
-const copyElementAfterSelf = (target: HTMLElement) => {
+const copyElementAfterSelf = (target: HTMLElement): HTMLElement | null => {
   const parent = target.parentElement
 
   if (!parent) {
     ElMessage.warning('无法复制该元素')
-    return
+    return null
   }
 
   const cloned = target.cloneNode(true) as HTMLElement
 
-  // 避免复制编辑态/选中态 class
+  // 避免复制编辑态/选择态
   cloned.classList.remove('editing', 'select-mode')
+  cloned.querySelectorAll('.page-break-line').forEach(el => el.remove())
 
-  // 清理可能复制到的 id，避免 DOM id 重复
+  // 避免 id 重复
   cloned.removeAttribute('id')
   cloned.querySelectorAll('[id]').forEach((el) => {
     el.removeAttribute('id')
@@ -877,96 +1018,85 @@ const copyElementAfterSelf = (target: HTMLElement) => {
   addPageBreaks()
 
   ElMessage.success('已复制元素')
+
+  return cloned
 }
 
-// 复制元素全局点击处理
-const handleCopyElementGlobalClick = (e: MouseEvent) => {
-  if (!isCopyElementMode.value) return
+const handleDeleteActionClick = async (e: MouseEvent) => {
+  e.preventDefault()
+  e.stopPropagation()
 
-  const target = e.target as HTMLElement | null
-  if (!target) return
+  const target = elementActionTarget.value
 
-  // 点击复制按钮本身，不退出
-  if (target.closest('.element-copy-mode-trigger')) {
+  if (!target || !resumeContentRef.value?.contains(target)) {
     return
   }
 
-  // 点击简历内部，交给 handleCopyElementClick
-  if (resumeContentRef.value?.contains(target)) {
+  if (!canDeleteElement(target)) {
+    ElMessage.warning('不能删除整个简历容器')
     return
   }
 
-  exitCopyElementMode()
-  notifyCopyModeInactive()
+  target.remove()
+
+  clearElementActionFocus()
+
+  saveEditedHTML()
+  addPageBreaks()
+
+  ElMessage.success('已删除元素')
 }
 
-// 通知复制模式状态变化
-const notifyCopyModeInactive = () => {
-  window.dispatchEvent(new CustomEvent('resume-element-copier-state-change', {
-    detail: { active: false }
-  }))
+const canDeleteElement = (target: HTMLElement) => {
+  if (!resumeContentRef.value) return false
+  if (target === resumeContentRef.value) return false
+  if (target.classList.contains('resume-container')) return false
+  if (target.closest('.page-break-line')) return false
+
+  return true
 }
 
-// 复制元素滚动处理
-const handleCopyElementScroll = () => {
-  if (copyHoveredElement.value && copyHoverOverlay.value) {
-    showCopyHoverOverlay(copyHoveredElement.value)
+// ==================== 滚动和监听管理 ====================
+
+const handleElementActionScroll = () => {
+  if (!elementActionTarget.value || shouldSuppressElementActions()) {
+    clearElementActionFocus()
+    return
   }
+
+  showElementActionFocusOverlay(elementActionTarget.value)
+  showElementActionOverlay(elementActionTarget.value)
 }
 
-// 进入复制元素模式
-const enterCopyElementMode = () => {
-  isCopyElementMode.value = true
+const setupElementActionFocusListeners = () => {
+  if (!resumeContentRef.value) return
 
-  document.body.style.cursor = 'copy'
+  resumeContentRef.value.removeEventListener('click', handleElementActionClick, true)
 
+  resumeContentRef.value.addEventListener('click', handleElementActionClick, true)
+
+  document.removeEventListener('click', handleElementActionGlobalClick, true)
+  document.addEventListener('click', handleElementActionGlobalClick, true)
+
+  window.removeEventListener('scroll', handleElementActionScroll, true)
+  window.addEventListener('scroll', handleElementActionScroll, true)
+
+  window.removeEventListener('keydown', handleElementActionKeydown, true)
+  window.addEventListener('keydown', handleElementActionKeydown, true)
+}
+
+const cleanupElementActionFocus = () => {
   if (resumeContentRef.value) {
-    resumeContentRef.value.addEventListener('mousemove', handleCopyElementMouseMove)
-    resumeContentRef.value.addEventListener('mouseleave', handleCopyElementMouseLeave)
-    resumeContentRef.value.addEventListener('click', handleCopyElementClick, true)
+    resumeContentRef.value.removeEventListener('click', handleElementActionClick, true)
   }
 
-  document.addEventListener('click', handleCopyElementGlobalClick, true)
-  window.addEventListener('scroll', handleCopyElementScroll, true)
-}
+  document.removeEventListener('click', handleElementActionGlobalClick, true)
+  window.removeEventListener('scroll', handleElementActionScroll, true)
+  window.removeEventListener('keydown', handleElementActionKeydown, true)
 
-// 退出复制元素模式
-const exitCopyElementMode = () => {
-  isCopyElementMode.value = false
-
-  document.body.style.cursor = ''
-
-  if (resumeContentRef.value) {
-    resumeContentRef.value.removeEventListener('mousemove', handleCopyElementMouseMove)
-    resumeContentRef.value.removeEventListener('mouseleave', handleCopyElementMouseLeave)
-    resumeContentRef.value.removeEventListener('click', handleCopyElementClick, true)
-  }
-
-  document.removeEventListener('click', handleCopyElementGlobalClick, true)
-  window.removeEventListener('scroll', handleCopyElementScroll, true)
-
-  copyHoveredElement.value = null
-  removeCopyHoverOverlay()
-}
-
-// 清理复制元素模式
-const cleanupCopyElementMode = () => {
-  if (resumeContentRef.value) {
-    resumeContentRef.value.removeEventListener('mousemove', handleCopyElementMouseMove)
-    resumeContentRef.value.removeEventListener('mouseleave', handleCopyElementMouseLeave)
-    resumeContentRef.value.removeEventListener('click', handleCopyElementClick, true)
-  }
-
-  document.removeEventListener('click', handleCopyElementGlobalClick, true)
-  window.removeEventListener('scroll', handleCopyElementScroll, true)
-
-  isCopyElementMode.value = false
-  copyHoveredElement.value = null
-  removeCopyHoverOverlay()
-
-  if (!isSelectMode.value && !isHeightResizeMode.value) {
-    document.body.style.cursor = ''
-  }
+  removeElementActionOverlay()
+  removeElementActionFocusOverlay()
+  elementActionTarget.value = null
 }
 
 // 创建选中元素的蒙层（蓝色实心，用于标记已选中的元素）
@@ -1065,6 +1195,7 @@ watch(() => resumeStore.generatedHTML, () => {
   nextTick(() => {
     addPageBreaks()
     setupContentEditableListeners()
+    setupElementActionFocusListeners()
     if (!isSelectMode.value) {
       setupSelectModeListeners()
     }
@@ -1333,6 +1464,9 @@ const getElementInfo = (el: HTMLElement): string => {
 
 // 进入选择模式
 const enterSelectMode = () => {
+  // 清空复制/删除聚焦
+  clearElementActionFocus()
+
   isSelectMode.value = true
   document.body.style.cursor = 'crosshair'
   
@@ -1496,6 +1630,7 @@ onMounted(() => {
     nextTick(() => {
       addPageBreaks()
       setupContentEditableListeners()
+      setupElementActionFocusListeners()
     })
   }
   
@@ -1504,9 +1639,6 @@ onMounted(() => {
   
   // 监听高度调整模式事件
   window.addEventListener('resume-height-resizer', handleHeightResizerEvent as EventListener)
-  
-  // 监听复制元素模式事件
-  window.addEventListener('resume-element-copier', handleElementCopierEvent as EventListener)
   
   // 监听元素选中事件（用于多选时移除单个元素）
   window.addEventListener('resume-element-remove', ((e: Event) => {
@@ -1537,14 +1669,17 @@ onMounted(() => {
   window.addEventListener('resume-element-unhighlight', (() => {
     unhighlightElement()
   }) as EventListener)
+  
+  // 设置常态点击聚焦操作监听
+  setupElementActionFocusListeners()
 })
 
 onUnmounted(() => {
   // 清理高度调整模式
   cleanupHeightResizeMode()
 
-  // 清理复制元素模式
-  cleanupCopyElementMode()
+  // 清理常态点击聚焦操作
+  cleanupElementActionFocus()
   
   // 移除 resumeContentRef 上的事件监听，避免组件销毁后残留
   if (resumeContentRef.value) {
@@ -1556,7 +1691,6 @@ onUnmounted(() => {
   // 移除事件监听
   window.removeEventListener('resume-element-selector', handleSelectorEvent as EventListener)
   window.removeEventListener('resume-height-resizer', handleHeightResizerEvent as EventListener)
-  window.removeEventListener('resume-element-copier', handleElementCopierEvent as EventListener)
   window.removeEventListener('resume-element-highlight', ((e: Event) => {
     const customEvent = e as CustomEvent
     highlightTargetElement(customEvent.detail.elementInfo)
