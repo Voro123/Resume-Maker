@@ -199,7 +199,7 @@ const toggleReasoningExpanded = () => {
 
 // 获取预览元素（供父组件调用）
 const getPreviewElement = () => {
-  return previewRef.value
+  return resumeContentRef.value
 }
 
 // 暴露方法供父组件调用
@@ -744,66 +744,47 @@ const addPageBreaks = () => {
   nextTick(() => {
     const container = document.querySelector('.resume-content .resume-container') as HTMLElement
     if (!container) return
-    
+
     // 移除已有的分页线
     container.querySelectorAll('.page-break-line').forEach(el => el.remove())
-    
+
+    // 确保分页线以 resume-container 为定位上下文
+    if (getComputedStyle(container).position === 'static') {
+      container.style.position = 'relative'
+    }
+
+    // 和 .resume-container 的 A4 预览尺寸保持一致：
+    // 210mm * 96 / 25.4 ≈ 794px
+    // 297mm * 96 / 25.4 ≈ 1123px
+    const A4_HEIGHT = 1123
     const containerHeight = container.scrollHeight
-    const A4_HEIGHT = 1123 // A4高度（96dpi）
-    const A4_PADDING = 57 // 页边距
-    const A4_CONTENT_HEIGHT = A4_HEIGHT - A4_PADDING * 2 // 1009px
-    
-    if (containerHeight > A4_CONTENT_HEIGHT) {
-      // 需要分页，计算准确的分页位置
-      // 分页线应该标示"第一页结束"的位置，即内容区域的底部
-      
-      // 创建分页线元素
-      const pageBreakLine = document.createElement('div')
-      pageBreakLine.className = 'page-break-line'
-      pageBreakLine.style.position = 'absolute'
-      pageBreakLine.style.top = `${A4_PADDING + A4_CONTENT_HEIGHT}px` // 57 + 1009 = 1066px
-      pageBreakLine.style.left = '0'
-      pageBreakLine.style.right = '0'
-      pageBreakLine.style.height = '3px'
-      pageBreakLine.style.zIndex = '100'
-      pageBreakLine.style.pointerEvents = 'none'
-      pageBreakLine.innerHTML = `
+    const totalPages = Math.ceil(containerHeight / A4_HEIGHT)
+
+    if (totalPages <= 1) return
+
+    const createPageBreakLine = (pageIndex: number) => {
+      const line = document.createElement('div')
+      line.className = 'page-break-line'
+      line.style.position = 'absolute'
+      line.style.top = `${A4_HEIGHT * pageIndex}px`
+      line.style.left = '0'
+      line.style.right = '0'
+      line.style.height = '3px'
+      line.style.zIndex = '100'
+      line.style.pointerEvents = 'none'
+
+      line.innerHTML = `
         <div style="position: relative; width: 100%; height: 100%;">
           <div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: repeating-linear-gradient(90deg, #f56c6c 0px, #f56c6c 8px, transparent 8px, transparent 12px); box-shadow: 0 1px 3px rgba(245, 108, 108, 0.3);"></div>
-          <span style="position: absolute; right: 20px; top: 8px; background: linear-gradient(135deg, #f56c6c, #f78989); color: white; padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: 500; white-space: nowrap; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">第 1 页结束 - 以下内容将在第 2 页显示</span>
+          <span style="position: absolute; right: 20px; top: 8px; background: linear-gradient(135deg, #f56c6c, #f78989); color: white; padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: 500; white-space: nowrap; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">第 ${pageIndex} 页结束 - 以下内容将在第 ${pageIndex + 1} 页显示</span>
         </div>
       `
-      
-      // 将容器设置为相对定位（如果还没有）
-      if (getComputedStyle(container).position === 'static') {
-        container.style.position = 'relative'
-      }
-      
-      // 插入分页线
-      container.appendChild(pageBreakLine)
-      
-      // 如果内容超过两页，添加更多分页线
-      const totalPages = Math.ceil((containerHeight - A4_PADDING) / A4_HEIGHT)
-      if (totalPages > 2) {
-        for (let i = 2; i < totalPages; i++) {
-          const additionalBreakLine = document.createElement('div')
-          additionalBreakLine.className = 'page-break-line'
-          additionalBreakLine.style.position = 'absolute'
-          additionalBreakLine.style.top = `${A4_PADDING + A4_CONTENT_HEIGHT + (A4_HEIGHT * (i - 1))}px`
-          additionalBreakLine.style.left = '0'
-          additionalBreakLine.style.right = '0'
-          additionalBreakLine.style.height = '3px'
-          additionalBreakLine.style.zIndex = '100'
-          additionalBreakLine.style.pointerEvents = 'none'
-          additionalBreakLine.innerHTML = `
-            <div style="position: relative; width: 100%; height: 100%;">
-              <div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: repeating-linear-gradient(90deg, #f56c6c 0px, #f56c6c 8px, transparent 8px, transparent 12px); box-shadow: 0 1px 3px rgba(245, 108, 108, 0.3);"></div>
-              <span style="position: absolute; right: 20px; top: 8px; background: linear-gradient(135deg, #f56c6c, #f78989); color: white; padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: 500; white-space: nowrap; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">第 ${i} 页结束 - 以下内容将在第 ${i + 1} 页显示</span>
-            </div>
-          `
-          container.appendChild(additionalBreakLine)
-        }
-      }
+
+      container.appendChild(line)
+    }
+
+    for (let pageIndex = 1; pageIndex < totalPages; pageIndex++) {
+      createPageBreakLine(pageIndex)
     }
   })
 }

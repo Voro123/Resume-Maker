@@ -12,6 +12,7 @@ export interface PDFOptions {
     useCORS: boolean
     letterRendering: boolean
     logging?: boolean
+    backgroundColor?: string
   }
   jsPDF?: {
     unit: string
@@ -39,7 +40,8 @@ const defaultOptions: PDFOptions = {
     scale: 2, // 提高清晰度
     useCORS: true,
     letterRendering: true,
-    logging: false
+    logging: false,
+    backgroundColor: '#ffffff'
   },
   jsPDF: {
     unit: 'mm',
