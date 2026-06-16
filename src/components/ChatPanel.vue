@@ -305,10 +305,6 @@ const toggleElementSelector = () => {
       existingElements: isSelectingElement.value ? selectedElements.value.map(el => el.info) : []
     }
   }))
-  
-  if (isSelectingElement.value) {
-    ElMessage.info('请点击简历中要修改的元素，Ctrl+点击可多选')
-  }
 }
 
 // 清除所有选中的元素

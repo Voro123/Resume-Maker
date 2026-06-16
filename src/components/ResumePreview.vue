@@ -93,6 +93,9 @@ const selectedElements = ref<Array<{element: HTMLElement, info: string}>>([])  /
 // 创建多个蒙层（每个选中元素一个）
 const selectedOverlays = ref<HTMLElement[]>([])
 
+// 防止一次点击被重复处理的锁
+let selectingLock = false
+
 // 创建或获取蒙层元素（用于悬浮高亮）
 const getOrCreateOverlay = (): HTMLElement => {
   if (overlayElement.value) {
@@ -224,6 +227,11 @@ const setupSelectModeListeners = () => {
   
   const contentEl = resumeContentRef.value
   
+  // 防止 generatedHTML 更新后重复绑定事件
+  contentEl.removeEventListener('mousemove', handleMouseMove)
+  contentEl.removeEventListener('mouseleave', handleMouseLeave)
+  contentEl.removeEventListener('click', handleElementClick)
+  
   // 鼠标移动时高亮元素
   contentEl.addEventListener('mousemove', handleMouseMove)
   contentEl.addEventListener('mouseleave', handleMouseLeave)
@@ -318,86 +326,103 @@ const handleMouseLeave = () => {
 const handleElementClick = (e: MouseEvent) => {
   if (!isSelectMode.value) return
   
-  e.preventDefault()
-  e.stopPropagation()
-  
-  const target = e.target as HTMLElement
-  
-  // 如果点击的是容器本身（没选中具体元素），则取消选择模式
-  if (target === resumeContentRef.value) {
-    exitSelectMode()
-    window.dispatchEvent(new CustomEvent('resume-element-selector', {
-      detail: { active: false }
-    }))
+  // 防止一次点击被重复处理（例如事件重复绑定、冒泡等）
+  if (selectingLock) {
+    e.preventDefault()
+    e.stopPropagation()
     return
   }
   
-  // 智能查找最合适的可选元素（确保多次点击同一区域能选中同一个元素）
-  const selectableElement = findSelectableElement(target)
+  selectingLock = true
   
-  // 获取元素信息
-  const elementInfo = getElementInfo(selectableElement)
-  
-  // 检查是否按住了 Ctrl 键（多选）
-  const isCtrlClick = e.ctrlKey || e.metaKey
-  
-  if (isCtrlClick) {
-    // Ctrl+点击：切换当前元素的选中状态
-    const existingIndex = selectedElements.value.findIndex(item => item.element === selectableElement)
+  try {
+    e.preventDefault()
+    e.stopPropagation()
     
-    if (existingIndex >= 0) {
-      // 如果已经选中，取消选中
-      selectedElements.value.splice(existingIndex, 1)
-      // 移除对应的蒙层
-      if (selectedOverlays.value[existingIndex]) {
-        selectedOverlays.value[existingIndex].remove()
-        selectedOverlays.value.splice(existingIndex, 1)
-      }
-      // 重新编号剩余的蒙层
-      reindexSelectedOverlays()
-    } else {
-      // 如果未选中，添加到多选列表
-      selectedElements.value.push({ element: selectableElement, info: elementInfo })
-      // 创建蒙层
-      createSelectedOverlay(selectableElement, selectedElements.value.length - 1)
+    const target = e.target as HTMLElement
+    
+    // 如果点击的是容器本身（没选中具体元素），则取消选择模式
+    if (target === resumeContentRef.value) {
+      exitSelectMode()
+      window.dispatchEvent(new CustomEvent('resume-element-selector', {
+        detail: { active: false }
+      }))
+      return
     }
-  } else {
-    // 普通点击：只选中当前元素
-    clearAllSelectedOverlays()
-    selectedElements.value = [{ element: selectableElement, info: elementInfo }]
-    // 创建蒙层
-    createSelectedOverlay(selectableElement, 0)
     
-    // 普通点击后自动退出选择模式（单选模式）
-    exitSelectMode()
+    // 智能查找最合适的可选元素（确保多次点击同一区域能选中同一个元素）
+    const selectableElement = findSelectableElement(target)
     
-    // 通知 ChatPanel 更新选择状态并退出选择模式
+    // 获取元素信息
+    const elementInfo = getElementInfo(selectableElement)
+    
+    // 检查是否按住了 Ctrl 键（多选）
+    const isCtrlClick = e.ctrlKey || e.metaKey
+    
+    if (isCtrlClick) {
+      // Ctrl+点击：切换当前元素的选中状态
+      const existingIndex = selectedElements.value.findIndex(item => item.element === selectableElement)
+      
+      if (existingIndex >= 0) {
+        // 如果已经选中，取消选中
+        selectedElements.value.splice(existingIndex, 1)
+        // 移除对应的蒙层
+        if (selectedOverlays.value[existingIndex]) {
+          selectedOverlays.value[existingIndex].remove()
+          selectedOverlays.value.splice(existingIndex, 1)
+        }
+        // 重新编号剩余的蒙层
+        reindexSelectedOverlays()
+      } else {
+        // 如果未选中，添加到多选列表
+        selectedElements.value.push({ element: selectableElement, info: elementInfo })
+        // 创建蒙层
+        createSelectedOverlay(selectableElement, selectedElements.value.length - 1)
+      }
+    } else {
+      // 普通点击：只选中当前元素
+      clearAllSelectedOverlays()
+      selectedElements.value = [{ element: selectableElement, info: elementInfo }]
+      // 创建蒙层
+      createSelectedOverlay(selectableElement, 0)
+      
+      // 普通点击后自动退出选择模式（单选模式）
+      exitSelectMode()
+      
+      // 通知 ChatPanel 更新选择状态并退出选择模式
+      window.dispatchEvent(new CustomEvent('resume-element-selected', {
+        detail: { 
+          elementInfo: elementInfo,
+          allElements: [elementInfo],
+          isMultiSelect: false
+        }
+      }))
+      
+      // 通知 ChatPanel 退出选择模式
+      window.dispatchEvent(new CustomEvent('resume-element-selector', {
+        detail: { active: false }
+      }))
+      
+      // 注意：提示信息由 ChatPanel.vue 监听 resume-element-selected 事件后显示
+      // 避免两个组件都显示提示
+      return  // 单选模式直接返回，不执行后面的发送逻辑
+    }
+    
+    // Ctrl+点击（多选模式）：发送选中事件，不自动退出
+    const allElementInfos = selectedElements.value.map(item => item.info)
     window.dispatchEvent(new CustomEvent('resume-element-selected', {
       detail: { 
         elementInfo: elementInfo,
-        allElements: [elementInfo],
-        isMultiSelect: false
+        allElements: allElementInfos,
+        isMultiSelect: true
       }
     }))
-    
-    // 通知 ChatPanel 退出选择模式
-    window.dispatchEvent(new CustomEvent('resume-element-selector', {
-      detail: { active: false }
-    }))
-    
-    ElMessage.success('已选中元素，请在输入框描述修改需求')
-    return  // 单选模式直接返回，不执行后面的发送逻辑
+  } finally {
+    // 使用 setTimeout 确保在当前调用栈完成后释放锁
+    window.setTimeout(() => {
+      selectingLock = false
+    }, 0)
   }
-  
-  // Ctrl+点击（多选模式）：发送选中事件，不自动退出
-  const allElementInfos = selectedElements.value.map(item => item.info)
-  window.dispatchEvent(new CustomEvent('resume-element-selected', {
-    detail: { 
-      elementInfo: elementInfo,
-      allElements: allElementInfos,
-      isMultiSelect: true
-    }
-  }))
 }
 
 // 重新编号选中蒙层的标签
@@ -659,6 +684,13 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  // 移除 resumeContentRef 上的事件监听，避免组件销毁后残留
+  if (resumeContentRef.value) {
+    resumeContentRef.value.removeEventListener('mousemove', handleMouseMove)
+    resumeContentRef.value.removeEventListener('mouseleave', handleMouseLeave)
+    resumeContentRef.value.removeEventListener('click', handleElementClick)
+  }
+  
   // 移除事件监听
   window.removeEventListener('resume-element-selector', handleSelectorEvent as EventListener)
   window.removeEventListener('resume-element-highlight', ((e: Event) => {
