@@ -100,12 +100,151 @@ const heightResizeOverlay = ref<HTMLElement | null>(null)
 const heightResizeHoveredElement = ref<HTMLElement | null>(null)
 const heightResizeHoverOverlay = ref<HTMLElement | null>(null)
 
+// undo/redo 状态
+type HeightResizeHistoryItem = {
+  elementPath: number[]
+  beforeHeight: string
+  beforeMinHeight: string
+  afterHeight: string
+  afterMinHeight: string
+}
+
+const heightResizeUndoStack = ref<HeightResizeHistoryItem[]>([])
+const heightResizeRedoStack = ref<HeightResizeHistoryItem[]>([])
+
 let isResizingHeight = false
 let resizeStartY = 0
 let resizeStartHeight = 0
+let resizeBeforeHeight = ''
+let resizeBeforeMinHeight = ''
 
 // 防止一次点击被重复处理的锁
 let selectingLock = false
+
+// ==================== 高度调整模式 - 元素路径工具函数 ====================
+
+// 获取元素路径（用于 undo/redo 后重新找到之前调整过的元素）
+const getElementPath = (el: HTMLElement): number[] => {
+  const path: number[] = []
+  let current: HTMLElement | null = el
+
+  while (current && current !== resumeContentRef.value) {
+    const parent = current.parentElement
+    if (!parent) break
+
+    const index = Array.from(parent.children).indexOf(current)
+    path.unshift(index)
+
+    current = parent
+  }
+
+  return path
+}
+
+// 根据路径找到元素
+const findElementByPath = (path: number[]): HTMLElement | null => {
+  let current: Element | null = resumeContentRef.value || null
+
+  for (const index of path) {
+    if (!current || !current.children[index]) {
+      return null
+    }
+
+    current = current.children[index]
+  }
+
+  return current as HTMLElement | null
+}
+
+// 应用历史记录
+const applyHeightResizeHistoryItem = (
+  item: HeightResizeHistoryItem,
+  direction: 'undo' | 'redo'
+) => {
+  const target = findElementByPath(item.elementPath)
+
+  if (!target) {
+    ElMessage.warning('找不到上次调整的元素，无法恢复')
+    return
+  }
+
+  if (direction === 'undo') {
+    target.style.height = item.beforeHeight
+    target.style.minHeight = item.beforeMinHeight
+  } else {
+    target.style.height = item.afterHeight
+    target.style.minHeight = item.afterMinHeight
+  }
+
+  heightResizeTarget.value = target
+  showHeightResizeOverlay(target)
+
+  saveEditedHTML()
+  addPageBreaks()
+}
+
+// undo 函数
+const undoHeightResize = () => {
+  const item = heightResizeUndoStack.value.pop()
+
+  if (!item) {
+    return
+  }
+
+  applyHeightResizeHistoryItem(item, 'undo')
+  heightResizeRedoStack.value.push(item)
+}
+
+// redo 函数
+const redoHeightResize = () => {
+  const item = heightResizeRedoStack.value.pop()
+
+  if (!item) {
+    return
+  }
+
+  applyHeightResizeHistoryItem(item, 'redo')
+  heightResizeUndoStack.value.push(item)
+}
+
+// 判断是否为可编辑的键盘目标（输入框、textarea、contenteditable）
+const isEditableKeyboardTarget = (target: EventTarget | null): boolean => {
+  const el = target as HTMLElement | null
+  if (!el) return false
+
+  const tagName = el.tagName?.toLowerCase()
+
+  return (
+    tagName === 'input' ||
+    tagName === 'textarea' ||
+    el.isContentEditable ||
+    Boolean(el.closest('[contenteditable="true"]'))
+  )
+}
+
+// 处理高度调整模式的快捷键
+const handleHeightResizeKeydown = (e: KeyboardEvent) => {
+  if (!isHeightResizeMode.value) return
+  if (isEditableKeyboardTarget(e.target)) return
+
+  const key = e.key.toLowerCase()
+
+  if ((e.ctrlKey || e.metaKey) && key === 'z' && !e.shiftKey) {
+    e.preventDefault()
+    e.stopPropagation()
+    undoHeightResize()
+    return
+  }
+
+  if (
+    ((e.ctrlKey || e.metaKey) && key === 'y') ||
+    ((e.ctrlKey || e.metaKey) && e.shiftKey && key === 'z')
+  ) {
+    e.preventDefault()
+    e.stopPropagation()
+    redoHeightResize()
+  }
+}
 
 // 创建或获取蒙层元素（用于悬浮高亮）
 const getOrCreateOverlay = (): HTMLElement => {
@@ -311,7 +450,11 @@ const handleHeightResizeElementClick = (e: MouseEvent) => {
   const target = findHeightResizableElement(rawTarget)
 
   if (!target) {
-    ElMessage.warning('该元素不适合调整高度，请选择外层模块或图片')
+    // 点击空白或不可调整位置，取消当前选中目标
+    heightResizeTarget.value = null
+    heightResizeHoveredElement.value = null
+    removeHeightResizeOverlay()
+    removeHeightResizeHoverOverlay()
     return
   }
 
@@ -334,6 +477,10 @@ const startHeightResize = (e: MouseEvent) => {
   isResizingHeight = true
   resizeStartY = e.clientY
   resizeStartHeight = heightResizeTarget.value.getBoundingClientRect().height
+
+  // 记录调整前的状态
+  resizeBeforeHeight = heightResizeTarget.value.style.height || ''
+  resizeBeforeMinHeight = heightResizeTarget.value.style.minHeight || ''
 
   document.body.style.cursor = 'ns-resize'
   document.body.style.userSelect = 'none'
@@ -359,6 +506,8 @@ const handleHeightResizeMove = (e: MouseEvent) => {
 const stopHeightResize = () => {
   if (!isResizingHeight) return
 
+  const target = heightResizeTarget.value
+
   isResizingHeight = false
 
   window.removeEventListener('mousemove', handleHeightResizeMove)
@@ -372,16 +521,40 @@ const stopHeightResize = () => {
     document.body.style.cursor = ''
   }
 
-  // 保存修改后的 HTML
-  saveEditedHTML()
+  if (target) {
+    const afterHeight = target.style.height || ''
+    const afterMinHeight = target.style.minHeight || ''
 
-  // 高度变化后重新计算分页线
-  addPageBreaks()
+    // 如果高度有变化，入栈历史记录
+    if (
+      afterHeight !== resizeBeforeHeight ||
+      afterMinHeight !== resizeBeforeMinHeight
+    ) {
+      heightResizeUndoStack.value.push({
+        elementPath: getElementPath(target),
+        beforeHeight: resizeBeforeHeight,
+        beforeMinHeight: resizeBeforeMinHeight,
+        afterHeight,
+        afterMinHeight
+      })
 
-  // 重新显示 overlay
-  if (heightResizeTarget.value) {
-    showHeightResizeOverlay(heightResizeTarget.value)
+      // 一旦产生新操作，redo 历史必须清空
+      heightResizeRedoStack.value = []
+    }
+
+    // 保存修改后的 HTML
+    saveEditedHTML()
+
+    // 高度变化后重新计算分页线
+    addPageBreaks()
+
+    // 重新显示 overlay
+    showHeightResizeOverlay(target)
   }
+
+  // 清空 before 状态
+  resizeBeforeHeight = ''
+  resizeBeforeMinHeight = ''
 }
 
 // 处理滚动事件，更新 overlay 位置
@@ -415,6 +588,9 @@ const enterHeightResizeMode = () => {
   // 监听滚动事件
   window.addEventListener('scroll', handleHeightResizeScroll, true)
 
+  // 绑定快捷键
+  window.addEventListener('keydown', handleHeightResizeKeydown, true)
+
   ElMessage.info('高度调整模式：鼠标悬浮到可调整元素上，点击后拖拽底部手柄调整高度')
 }
 
@@ -435,6 +611,9 @@ const exitHeightResizeMode = () => {
   // 移除滚动监听
   window.removeEventListener('scroll', handleHeightResizeScroll, true)
 
+  // 解绑快捷键
+  window.removeEventListener('keydown', handleHeightResizeKeydown, true)
+
   removeHeightResizeHoverOverlay()
   removeHeightResizeOverlay()
   heightResizeHoveredElement.value = null
@@ -452,6 +631,9 @@ const cleanupHeightResizeMode = () => {
   window.removeEventListener('mousemove', handleHeightResizeMove)
   window.removeEventListener('mouseup', stopHeightResize)
   window.removeEventListener('scroll', handleHeightResizeScroll, true)
+
+  // 解绑快捷键
+  window.removeEventListener('keydown', handleHeightResizeKeydown, true)
 
   removeHeightResizeHoverOverlay()
   removeHeightResizeOverlay()
