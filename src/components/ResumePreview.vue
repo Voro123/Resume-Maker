@@ -199,7 +199,7 @@ const toggleReasoningExpanded = () => {
 
 // 获取预览元素（供父组件调用）
 const getPreviewElement = () => {
-  return resumeContentRef.value
+  return resumeContentRef.value?.querySelector('.resume-container') as HTMLElement
 }
 
 // 暴露方法供父组件调用
@@ -847,7 +847,8 @@ $transition-normal: 0.3s ease;
 
 // ==================== 简历预览包装器 ====================
 .resume-preview-wrapper {
-  max-width: 900px;
+  width: fit-content;
+  max-width: none;
   margin: 0 auto;
   animation: fadeInUp 0.5s ease;
 }
@@ -865,7 +866,9 @@ $transition-normal: 0.3s ease;
 
 // ==================== 简历内容区域 ====================
 .resume-content {
-  background: white;
+  width: fit-content;
+  max-width: none;
+  background: transparent;
   // 默认有圆角和阴影（编辑模式）
   border-radius: $radius-md;
   box-shadow: $shadow-lg;
@@ -877,6 +880,7 @@ $transition-normal: 0.3s ease;
     border-radius: 0;
     box-shadow: none;
     padding: 0;
+    background: transparent;
   }
   
   // 深度选择器：修改简历内容的样式
@@ -1201,7 +1205,8 @@ $transition-normal: 0.3s ease;
 // ==================== 响应式设计 ====================
 @media (max-width: 1200px) {
   .resume-preview-wrapper {
-    max-width: 100%;
+    width: fit-content;
+    max-width: none;
     padding: 0 20px;
   }
 }
@@ -1212,6 +1217,7 @@ $transition-normal: 0.3s ease;
   }
   
   .resume-content {
+    width: fit-content;
     :deep(.resume-container) {
       width: 100% !important;
       min-height: auto !important;
