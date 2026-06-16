@@ -1,4 +1,5 @@
-import html2pdf from 'html2pdf.js'
+import html2canvas from 'html2canvas'
+import jsPDF from 'jspdf'
 
 export interface PDFOptions {
   filename?: string
@@ -19,12 +20,6 @@ export interface PDFOptions {
     format: string | [number, number]
     orientation: 'portrait' | 'landscape'
     compress: boolean
-  }
-  pagebreak?: {
-    mode: string[]
-    before?: string
-    after?: string
-    avoid?: string
   }
 }
 
@@ -48,10 +43,6 @@ const defaultOptions: PDFOptions = {
     format: 'a4',
     orientation: 'portrait',
     compress: true
-  },
-  pagebreak: {
-    mode: ['css', 'legacy'],
-    avoid: 'h1, h2, h3, h4, .section-title, .page-break-avoid'
   }
 }
 
@@ -60,45 +51,99 @@ export const generatePDF = async (
   element: HTMLElement,
   options?: Partial<PDFOptions>
 ): Promise<void> => {
-  const finalOptions = {
-    ...defaultOptions,
-    ...options,
-    jsPDF: {
-      ...defaultOptions.jsPDF,
-      ...options?.jsPDF
-    },
-    html2canvas: {
-      ...defaultOptions.html2canvas,
-      ...options?.html2canvas
-    }
-  } as any
+  const filename = options?.filename || defaultOptions.filename || '简历.pdf'
+
+  const elementsToHide = element.querySelectorAll('.page-break-line, .edit-tip, .select-tip')
+  const originalDisplays: string[] = []
 
   try {
-    // 隐藏分页线等编辑辅助元素
-    const elementsToHide = element.querySelectorAll('.page-break-line, .edit-tip, .select-tip')
-    const originalDisplays: string[] = []
     elementsToHide.forEach((el) => {
       const htmlEl = el as HTMLElement
       originalDisplays.push(htmlEl.style.display)
       htmlEl.style.display = 'none'
     })
-    
-    // 生成前注入打印优化样式
+
     injectPrintStyles(element)
-    
-    // 等待样式应用
     await new Promise(resolve => setTimeout(resolve, 100))
-    
-    await html2pdf().set(finalOptions).from(element).save()
-    
-    // 恢复元素的显示
+
+    const scale = options?.html2canvas?.scale || defaultOptions.html2canvas?.scale || 2
+
+    const canvas = await html2canvas(element, {
+      scale,
+      useCORS: true,
+      logging: false,
+      backgroundColor: '#ffffff',
+      scrollX: 0,
+      scrollY: 0,
+      windowWidth: element.scrollWidth,
+      windowHeight: element.scrollHeight
+    } as any)
+
+    const pdf = new jsPDF({
+      unit: 'mm',
+      format: 'a4',
+      orientation: 'portrait',
+      compress: true
+    })
+
+    const pageWidthMm = 210
+    const pageHeightMm = 297
+
+    // 用 canvas 实际宽度反推一页 A4 在 canvas 中对应的像素高度。
+    // 这样不依赖硬编码，和当前导出节点宽度严格匹配。
+    const pageHeightPx = Math.floor(canvas.width * pageHeightMm / pageWidthMm)
+
+    let renderedHeight = 0
+    let pageIndex = 0
+
+    while (renderedHeight < canvas.height) {
+      const sliceHeight = Math.min(pageHeightPx, canvas.height - renderedHeight)
+
+      const pageCanvas = document.createElement('canvas')
+      pageCanvas.width = canvas.width
+      pageCanvas.height = sliceHeight
+
+      const ctx = pageCanvas.getContext('2d')
+      if (!ctx) {
+        throw new Error('无法创建 PDF 页面画布')
+      }
+
+      ctx.fillStyle = '#ffffff'
+      ctx.fillRect(0, 0, pageCanvas.width, pageCanvas.height)
+      ctx.drawImage(
+        canvas,
+        0,
+        renderedHeight,
+        canvas.width,
+        sliceHeight,
+        0,
+        0,
+        canvas.width,
+        sliceHeight
+      )
+
+      const imgData = pageCanvas.toDataURL('image/jpeg', 0.98)
+
+      if (pageIndex > 0) {
+        pdf.addPage()
+      }
+
+      const imgHeightMm = (sliceHeight * pageWidthMm) / canvas.width
+      pdf.addImage(imgData, 'JPEG', 0, 0, pageWidthMm, imgHeightMm)
+
+      renderedHeight += sliceHeight
+      pageIndex += 1
+    }
+
+    pdf.save(filename)
+  } catch (error) {
+    console.error('PDF 生成失败:', error)
+    throw new Error('PDF 生成失败，请重试')
+  } finally {
     elementsToHide.forEach((el, index) => {
       const htmlEl = el as HTMLElement
       htmlEl.style.display = originalDisplays[index] || ''
     })
-  } catch (error) {
-    console.error('PDF 生成失败:', error)
-    throw new Error('PDF 生成失败，请重试')
   }
 }
 
@@ -107,50 +152,99 @@ export const previewPDF = async (
   element: HTMLElement,
   options?: Partial<PDFOptions>
 ): Promise<void> => {
-  const finalOptions = {
-    ...defaultOptions,
-    ...options,
-    jsPDF: {
-      ...defaultOptions.jsPDF,
-      ...options?.jsPDF
-    },
-    html2canvas: {
-      ...defaultOptions.html2canvas,
-      ...options?.html2canvas
-    }
-  } as any
+  const elementsToHide = element.querySelectorAll('.page-break-line, .edit-tip, .select-tip')
+  const originalDisplays: string[] = []
 
   try {
-    // 隐藏分页线等编辑辅助元素
-    const elementsToHide = element.querySelectorAll('.page-break-line, .edit-tip, .select-tip')
-    const originalDisplays: string[] = []
     elementsToHide.forEach((el) => {
       const htmlEl = el as HTMLElement
       originalDisplays.push(htmlEl.style.display)
       htmlEl.style.display = 'none'
     })
-    
-    // 生成前注入打印优化样式
+
     injectPrintStyles(element)
-    
     await new Promise(resolve => setTimeout(resolve, 100))
-    
-    const pdf = await html2pdf().set(finalOptions).from(element).outputPdf()
-    const blob = new Blob([pdf], { type: 'application/pdf' })
+
+    const scale = options?.html2canvas?.scale || defaultOptions.html2canvas?.scale || 2
+
+    const canvas = await html2canvas(element, {
+      scale,
+      useCORS: true,
+      logging: false,
+      backgroundColor: '#ffffff',
+      scrollX: 0,
+      scrollY: 0,
+      windowWidth: element.scrollWidth,
+      windowHeight: element.scrollHeight
+    } as any)
+
+    const pdf = new jsPDF({
+      unit: 'mm',
+      format: 'a4',
+      orientation: 'portrait',
+      compress: true
+    })
+
+    const pageWidthMm = 210
+    const pageHeightMm = 297
+
+    const pageHeightPx = Math.floor(canvas.width * pageHeightMm / pageWidthMm)
+
+    let renderedHeight = 0
+    let pageIndex = 0
+
+    while (renderedHeight < canvas.height) {
+      const sliceHeight = Math.min(pageHeightPx, canvas.height - renderedHeight)
+
+      const pageCanvas = document.createElement('canvas')
+      pageCanvas.width = canvas.width
+      pageCanvas.height = sliceHeight
+
+      const ctx = pageCanvas.getContext('2d')
+      if (!ctx) {
+        throw new Error('无法创建 PDF 页面画布')
+      }
+
+      ctx.fillStyle = '#ffffff'
+      ctx.fillRect(0, 0, pageCanvas.width, pageCanvas.height)
+      ctx.drawImage(
+        canvas,
+        0,
+        renderedHeight,
+        canvas.width,
+        sliceHeight,
+        0,
+        0,
+        canvas.width,
+        sliceHeight
+      )
+
+      const imgData = pageCanvas.toDataURL('image/jpeg', 0.98)
+
+      if (pageIndex > 0) {
+        pdf.addPage()
+      }
+
+      const imgHeightMm = (sliceHeight * pageWidthMm) / canvas.width
+      pdf.addImage(imgData, 'JPEG', 0, 0, pageWidthMm, imgHeightMm)
+
+      renderedHeight += sliceHeight
+      pageIndex += 1
+    }
+
+    const blob = new Blob([pdf.output('arraybuffer')], { type: 'application/pdf' })
     const url = URL.createObjectURL(blob)
     window.open(url, '_blank')
-    
-    // 恢复元素的显示
-    elementsToHide.forEach((el, index) => {
-      const htmlEl = el as HTMLElement
-      htmlEl.style.display = originalDisplays[index] || ''
-    })
-    
-    // 延迟释放 URL 对象
+
     setTimeout(() => URL.revokeObjectURL(url), 5000)
   } catch (error) {
     console.error('PDF 预览失败:', error)
     throw new Error('PDF 预览失败，请重试')
+  } finally {
+    elementsToHide.forEach((el, index) => {
+      const htmlEl = el as HTMLElement
+      htmlEl.style.display = originalDisplays[index] || ''
+    })
   }
 }
 
@@ -198,33 +292,6 @@ export const injectPrintStyles = (element?: HTMLElement) => {
     existingStyle.remove()
   }
   
-  if (element) {
-    // 将样式插入到元素的父级或head
-    const parent = element.ownerDocument?.head || document.head
-    parent.appendChild(style)
-  } else {
-    document.head.appendChild(style)
-  }
+  const parent = element?.ownerDocument?.head || document.head
+  parent.appendChild(style)
 }
-
-// 检测并优化分页
-export const optimizePageBreaks = (element: HTMLElement) => {
-  if (!element) return
-  
-  // 为所有标题添加避免底部孤立的样式
-  const headings = element.querySelectorAll('h1, h2, h3, h4, .section-title')
-  headings.forEach((el) => {
-    const htmlEl = el as HTMLElement
-    htmlEl.style.breakAfter = 'avoid'
-    htmlEl.style.pageBreakAfter = 'avoid'
-  })
-  
-  // 为列表项添加避免分页
-  const listItems = element.querySelectorAll('li, tr')
-  listItems.forEach((el) => {
-    const htmlEl = el as HTMLElement
-    htmlEl.style.breakInside = 'avoid'
-    htmlEl.style.pageBreakInside = 'avoid'
-  })
-}
-
