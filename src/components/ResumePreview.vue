@@ -582,9 +582,9 @@ const showElementActionOverlay = (target: HTMLElement) => {
     overlay.style.zIndex = '10030'
     overlay.style.pointerEvents = 'auto'
 
-    const copyBtn = createElementActionButton('复制', '⧉', handleCopyActionClick)
-    const resizeBtn = createElementActionButton('调高', '↕', handleStartResizeActionClick)
-    const deleteBtn = createElementActionButton('删除', '×', handleDeleteActionClick, true)
+  const copyBtn = createElementActionButton('复制', 'copy', handleCopyActionClick)
+  const resizeBtn = createElementActionButton('调高', 'resize', handleStartResizeActionClick)
+  const deleteBtn = createElementActionButton('删除', 'delete', handleDeleteActionClick, true)
 
     overlay.appendChild(copyBtn)
     overlay.appendChild(resizeBtn)
@@ -620,16 +620,23 @@ const showElementActionOverlay = (target: HTMLElement) => {
 
 const createElementActionButton = (
   title: string,
-  text: string,
+  iconType: string,
   handler: (e: MouseEvent) => void,
   danger = false
 ): HTMLButtonElement => {
   const button = document.createElement('button')
   button.type = 'button'
   button.title = title
-  button.innerText = text
   button.className = danger ? 'element-action-btn is-danger' : 'element-action-btn'
 
+  // SVG 图标定义
+  const svgIcons: Record<string, string> = {
+    copy: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>',
+    resize: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 11 12 6 7 11"></polyline><polyline points="7 13 12 18 17 13"></polyline></svg>',
+    delete: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>'
+  }
+
+  button.innerHTML = svgIcons[iconType] || ''
   button.style.width = '28px'
   button.style.height = '28px'
   button.style.border = 'none'
@@ -638,7 +645,6 @@ const createElementActionButton = (
   button.style.alignItems = 'center'
   button.style.justifyContent = 'center'
   button.style.cursor = 'pointer'
-  button.style.fontSize = danger ? '18px' : '16px'
   button.style.color = danger ? '#fecaca' : '#dbeafe'
   button.style.background = 'transparent'
 
