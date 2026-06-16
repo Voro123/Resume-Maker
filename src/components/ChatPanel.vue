@@ -197,6 +197,11 @@
             @keydown.enter.exact.prevent="handleSend"
           />
         </div>
+
+        <!-- 快捷键提示 -->
+        <div class="input-shortcut-hint">
+          Enter 发送，Ctrl+Enter 换行
+        </div>
         
         <!-- 输入底部操作栏 -->
         <div class="chat-input-actions">
@@ -238,20 +243,17 @@
             </el-tooltip>
           </div>
 
-          <!-- 右侧：发送区域 -->
-          <div class="send-area">
-            <span class="send-hint">Enter 发送，Ctrl+Enter 换行</span>
-            <el-button 
-              type="primary"
-              class="send-btn"
-              @click="handleSend"
-              :loading="chatStore.isLoading"
-              :disabled="!userInput.trim()"
-            >
-              <el-icon><Promotion /></el-icon>
-              发送
-            </el-button>
-          </div>
+          <!-- 右侧：发送按钮 -->
+          <el-button 
+            type="primary"
+            class="send-btn"
+            @click="handleSend"
+            :loading="chatStore.isLoading"
+            :disabled="!userInput.trim()"
+          >
+            <el-icon><Promotion /></el-icon>
+            发送
+          </el-button>
         </div>
       </div>
     </div>
@@ -1247,29 +1249,36 @@ const handleReject = () => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: 12px;
   margin-top: 8px;
 }
 
 .input-tools {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   flex-shrink: 0;
 }
 
+.input-shortcut-hint {
+  margin-top: 6px;
+  color: #a8abb2;
+  font-size: 12px;
+  text-align: right;
+}
+
 .tool-btn {
-  width: 34px;
-  height: 34px;
+  width: 40px;
+  height: 40px;
   padding: 0;
-  border-radius: 8px;
-  color: #6b7280;
+  border-radius: 12px;
+  color: #64748b;
   background: #ffffff;
   border: 1px solid #dcdfe6;
   transition: all 0.18s ease;
 
   .el-icon {
-    font-size: 16px;
+    font-size: 18px;
   }
 
   &:hover {
@@ -1282,43 +1291,38 @@ const handleReject = () => {
     color: #ffffff;
     border-color: #409eff;
     background: #409eff;
-    box-shadow: 0 2px 8px rgba(64, 158, 255, 0.3);
+    box-shadow: 0 4px 10px rgba(64, 158, 255, 0.25);
+  }
+
+  &.element-copy-mode-trigger.active {
+    border-color: #7e57c2;
+    background: #7e57c2;
+    box-shadow: 0 4px 10px rgba(126, 87, 194, 0.25);
+  }
+
+  &.height-resize-mode-trigger.active {
+    border-color: #67c23a;
+    background: #67c23a;
+    box-shadow: 0 4px 10px rgba(103, 194, 58, 0.25);
   }
 }
 
-.send-area {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
-  min-width: 0;
-  flex: 1;
-}
-
-.send-hint {
-  color: #a8abb2;
-  font-size: 11px;
-  line-height: 1.4;
-  white-space: nowrap;
-  opacity: 0.85;
-}
-
 .send-btn {
-  height: 34px;
-  min-width: 80px;
-  border-radius: 8px;
-  font-weight: 500;
-  font-size: 13px;
-  transition: all 0.2s;
-  
+  height: 40px;
+  min-width: 108px;
+  padding: 0 18px;
+  border-radius: 12px;
+  font-size: 16px;
+  font-weight: 600;
+
   .el-icon {
-    margin-right: 3px;
-    font-size: 13px;
+    margin-right: 5px;
+    font-size: 16px;
   }
   
   &:not(:disabled):hover {
     transform: translateY(-1px);
-    box-shadow: 0 3px 10px rgba(64, 158, 255, 0.35);
+    box-shadow: 0 4px 12px rgba(64, 158, 255, 0.35);
   }
   
   &:disabled {
@@ -1328,21 +1332,29 @@ const handleReject = () => {
 }
 
 /* ==================== 响应式 ==================== */
-@media (max-width: 768px) {
+@media (max-width: 520px) {
+  .input-shortcut-hint {
+    display: none;
+  }
+  
   .chat-input-actions {
-    align-items: flex-start;
-    flex-direction: column;
+    gap: 8px;
   }
   
-  .send-area {
-    width: 100%;
-    justify-content: space-between;
+  .tool-btn {
+    width: 36px;
+    height: 36px;
   }
   
-  .send-hint {
-    white-space: normal;
+  .send-btn {
+    height: 36px;
+    min-width: 80px;
+    padding: 0 12px;
+    font-size: 14px;
   }
-  
+}
+
+@media (max-width: 768px) {
   .message-body {
     max-width: 85%;
   }
