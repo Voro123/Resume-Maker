@@ -97,6 +97,8 @@ const selectedOverlays = ref<HTMLElement[]>([])
 const isHeightResizeMode = ref(false)
 const heightResizeTarget = ref<HTMLElement | null>(null)
 const heightResizeOverlay = ref<HTMLElement | null>(null)
+const heightResizeHoveredElement = ref<HTMLElement | null>(null)
+const heightResizeHoverOverlay = ref<HTMLElement | null>(null)
 
 let isResizingHeight = false
 let resizeStartY = 0
@@ -234,6 +236,70 @@ const showHeightResizeOverlay = (target: HTMLElement) => {
   heightResizeOverlay.value = overlay
 }
 
+// 移除高度调整 hover overlay
+const removeHeightResizeHoverOverlay = () => {
+  if (heightResizeHoverOverlay.value) {
+    heightResizeHoverOverlay.value.remove()
+    heightResizeHoverOverlay.value = null
+  }
+}
+
+// 显示高度调整 hover overlay（绿色虚线高亮）
+const showHeightResizeHoverOverlay = (target: HTMLElement) => {
+  const rect = target.getBoundingClientRect()
+
+  let overlay = heightResizeHoverOverlay.value
+
+  if (!overlay) {
+    overlay = document.createElement('div')
+    overlay.className = 'height-resize-hover-overlay'
+    overlay.style.position = 'fixed'
+    overlay.style.pointerEvents = 'none'
+    overlay.style.zIndex = '9999'
+    overlay.style.borderRadius = '3px'
+    overlay.style.backgroundColor = 'rgba(103, 194, 58, 0.10)'
+    overlay.style.outline = '2px dashed rgba(103, 194, 58, 0.85)'
+    overlay.style.outlineOffset = '-1px'
+    overlay.style.transition = 'all 0.12s ease'
+    document.body.appendChild(overlay)
+
+    heightResizeHoverOverlay.value = overlay
+  }
+
+  overlay.style.top = `${rect.top}px`
+  overlay.style.left = `${rect.left}px`
+  overlay.style.width = `${rect.width}px`
+  overlay.style.height = `${rect.height}px`
+  overlay.style.display = 'block'
+}
+
+// 处理高度调整模式的鼠标移动（hover 效果）
+const handleHeightResizeMouseMove = (e: MouseEvent) => {
+  if (!isHeightResizeMode.value || isResizingHeight) return
+
+  const rawTarget = e.target as HTMLElement
+  const target = findHeightResizableElement(rawTarget)
+
+  if (!target) {
+    heightResizeHoveredElement.value = null
+    removeHeightResizeHoverOverlay()
+    return
+  }
+
+  heightResizeHoveredElement.value = target
+  showHeightResizeHoverOverlay(target)
+
+  e.stopPropagation()
+}
+
+// 处理鼠标离开简历内容区域
+const handleHeightResizeMouseLeave = () => {
+  if (!isHeightResizeMode.value || isResizingHeight) return
+
+  heightResizeHoveredElement.value = null
+  removeHeightResizeHoverOverlay()
+}
+
 // 处理高度调整模式下的元素点击
 const handleHeightResizeElementClick = (e: MouseEvent) => {
   if (!isHeightResizeMode.value) return
@@ -250,6 +316,8 @@ const handleHeightResizeElementClick = (e: MouseEvent) => {
   }
 
   heightResizeTarget.value = target
+  heightResizeHoveredElement.value = null
+  removeHeightResizeHoverOverlay()
   showHeightResizeOverlay(target)
 }
 
@@ -259,6 +327,9 @@ const startHeightResize = (e: MouseEvent) => {
 
   e.preventDefault()
   e.stopPropagation()
+
+  removeHeightResizeHoverOverlay()
+  heightResizeHoveredElement.value = null
 
   isResizingHeight = true
   resizeStartY = e.clientY
@@ -315,6 +386,10 @@ const stopHeightResize = () => {
 
 // 处理滚动事件，更新 overlay 位置
 const handleHeightResizeScroll = () => {
+  if (heightResizeHoveredElement.value && heightResizeHoverOverlay.value) {
+    showHeightResizeHoverOverlay(heightResizeHoveredElement.value)
+  }
+
   if (heightResizeTarget.value && heightResizeOverlay.value) {
     showHeightResizeOverlay(heightResizeTarget.value)
   }
@@ -329,16 +404,18 @@ const enterHeightResizeMode = () => {
     exitSelectMode()
   }
 
-  document.body.style.cursor = 'ns-resize'
+  document.body.style.cursor = 'crosshair'
 
   if (resumeContentRef.value) {
+    resumeContentRef.value.addEventListener('mousemove', handleHeightResizeMouseMove)
+    resumeContentRef.value.addEventListener('mouseleave', handleHeightResizeMouseLeave)
     resumeContentRef.value.addEventListener('click', handleHeightResizeElementClick, true)
   }
 
   // 监听滚动事件
   window.addEventListener('scroll', handleHeightResizeScroll, true)
 
-  ElMessage.info('高度调整模式：点击一个模块，然后拖拽底部手柄调整高度')
+  ElMessage.info('高度调整模式：鼠标悬浮到可调整元素上，点击后拖拽底部手柄调整高度')
 }
 
 // 退出高度调整模式
@@ -350,19 +427,25 @@ const exitHeightResizeMode = () => {
   }
 
   if (resumeContentRef.value) {
+    resumeContentRef.value.removeEventListener('mousemove', handleHeightResizeMouseMove)
+    resumeContentRef.value.removeEventListener('mouseleave', handleHeightResizeMouseLeave)
     resumeContentRef.value.removeEventListener('click', handleHeightResizeElementClick, true)
   }
 
   // 移除滚动监听
   window.removeEventListener('scroll', handleHeightResizeScroll, true)
 
+  removeHeightResizeHoverOverlay()
   removeHeightResizeOverlay()
+  heightResizeHoveredElement.value = null
   heightResizeTarget.value = null
 }
 
 // 清理高度调整模式
 const cleanupHeightResizeMode = () => {
   if (resumeContentRef.value) {
+    resumeContentRef.value.removeEventListener('mousemove', handleHeightResizeMouseMove)
+    resumeContentRef.value.removeEventListener('mouseleave', handleHeightResizeMouseLeave)
     resumeContentRef.value.removeEventListener('click', handleHeightResizeElementClick, true)
   }
 
@@ -370,10 +453,12 @@ const cleanupHeightResizeMode = () => {
   window.removeEventListener('mouseup', stopHeightResize)
   window.removeEventListener('scroll', handleHeightResizeScroll, true)
 
+  removeHeightResizeHoverOverlay()
   removeHeightResizeOverlay()
 
   isHeightResizeMode.value = false
   isResizingHeight = false
+  heightResizeHoveredElement.value = null
   heightResizeTarget.value = null
 
   document.body.style.cursor = ''
