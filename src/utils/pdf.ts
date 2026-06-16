@@ -50,8 +50,8 @@ const defaultOptions: PDFOptions = {
     compress: true
   },
   pagebreak: {
-    mode: ['avoid-all', 'css', 'legacy'],
-    avoid: 'section, .section, h1, h2, h3, .page-break-avoid'
+    mode: ['css', 'legacy'],
+    avoid: 'h1, h2, h3, h4, .section-title, .page-break-avoid'
   }
 }
 
@@ -160,36 +160,26 @@ export const injectPrintStyles = (element?: HTMLElement) => {
   const style = document.createElement('style')
   style.id = styleId
   style.textContent = `
-    /* 打印样式优化 */
     @media print {
-      /* 避免元素内部分页 */
-      section, 
-      .section,
       .page-break-avoid,
-      h1, h2, h3, h4 {
+      h1, h2, h3, h4,
+      .section-title {
         break-inside: avoid !important;
         page-break-inside: avoid !important;
-      }
-      
-      /* 避免标题单独在页面底部 */
-      h1, h2, h3, h4, .section-title {
         break-after: avoid !important;
         page-break-after: avoid !important;
       }
-      
-      /* 避免在表格行之间分页 */
+
       tr, td, th {
         break-inside: avoid !important;
         page-break-inside: avoid !important;
       }
-      
-      /* 设置页面边距 */
+
       @page {
         margin: 0;
         size: A4;
       }
-      
-      /* 隐藏不必要元素 */
+
       .no-print, 
       button, 
       .el-button,
@@ -197,20 +187,16 @@ export const injectPrintStyles = (element?: HTMLElement) => {
       header:not(.resume-header) {
         display: none !important;
       }
-      
-      /* 确保背景色打印 */
+
       * {
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important;
       }
-      
-      /* 强制清除外层容器的padding/margin，防止AI生成的内容导致白边 */
+
       body,
       .page-wrapper,
       .resume-container,
-      .resume-content,
-      [class*="wrapper"],
-      [class*="container"] {
+      .resume-content {
         padding: 0 !important;
         margin: 0 !important;
       }
@@ -223,16 +209,6 @@ export const injectPrintStyles = (element?: HTMLElement) => {
       margin: 0 auto;
       background: white;
       box-shadow: 0 2px 12px rgba(0,0,0,0.1);
-    }
-    
-    /* 强制清除预览时外层容器的padding/margin */
-    .resume-content body,
-    .resume-content .page-wrapper,
-    .resume-content .resume-container,
-    .resume-content [class*="wrapper"],
-    .resume-content [class*="container"] {
-      padding: 0 !important;
-      margin: 0 !important;
     }
   `
   
