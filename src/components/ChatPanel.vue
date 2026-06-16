@@ -219,7 +219,7 @@
               :hide-after="0"
             >
               <el-button
-                class="tool-btn"
+                class="tool-btn height-resize-mode-trigger"
                 :class="{ active: isHeightResizeMode }"
                 @click="toggleHeightResizeMode"
               >
@@ -515,16 +515,25 @@ onMounted(() => {
   window.addEventListener('resume-element-selected', handleElementSelected as EventListener)
   // 监听选择模式状态变化（来自 ResumePreview.vue 的完成/取消按钮）
   window.addEventListener('resume-element-selector', handleSelectorStateChange as EventListener)
+  // 监听高度调整模式状态变化（来自 ResumePreview.vue 的主动退出）
+  window.addEventListener('resume-height-resizer-state-change', handleHeightResizerStateChange as EventListener)
 })
 
 onUnmounted(() => {
   window.removeEventListener('resume-element-selected', handleElementSelected as EventListener)
   window.removeEventListener('resume-element-selector', handleSelectorStateChange as EventListener)
+  // 移除高度调整模式状态变化事件监听
+  window.removeEventListener('resume-height-resizer-state-change', handleHeightResizerStateChange as EventListener)
 })
 
 // 处理选择模式状态变化
 const handleSelectorStateChange = (event: CustomEvent) => {
   isSelectingElement.value = event.detail.active
+}
+
+// 处理高度调整模式状态变化（来自 ResumePreview 的主动退出）
+const handleHeightResizerStateChange = (event: CustomEvent) => {
+  isHeightResizeMode.value = Boolean(event.detail.active)
 }
 
 // 清空聊天记录

@@ -246,6 +246,37 @@ const handleHeightResizeKeydown = (e: KeyboardEvent) => {
   }
 }
 
+// 处理全局点击事件：点击简历外部区域时退出高度调整模式
+const handleHeightResizeGlobalClick = (e: MouseEvent) => {
+  if (!isHeightResizeMode.value || isResizingHeight) return
+
+  const target = e.target as HTMLElement | null
+  if (!target) return
+
+  // 点击调整高度按钮本身，不退出
+  if (target.closest('.height-resize-mode-trigger')) {
+    return
+  }
+
+  // 点击拖拽手柄，不退出
+  if (target.closest('.height-resize-handle')) {
+    return
+  }
+
+  // 点击简历内容内部，交给 handleHeightResizeElementClick 处理
+  if (resumeContentRef.value?.contains(target)) {
+    return
+  }
+
+  // 点击预览内容外部：退出高度调整模式
+  exitHeightResizeMode()
+
+  // 通知 ChatPanel 同步按钮 active 状态
+  window.dispatchEvent(new CustomEvent('resume-height-resizer-state-change', {
+    detail: { active: false }
+  }))
+}
+
 // 创建或获取蒙层元素（用于悬浮高亮）
 const getOrCreateOverlay = (): HTMLElement => {
   if (overlayElement.value) {
@@ -588,6 +619,9 @@ const enterHeightResizeMode = () => {
   // 监听滚动事件
   window.addEventListener('scroll', handleHeightResizeScroll, true)
 
+  // 绑定全局点击事件（捕获阶段）：点击外部区域退出模式
+  document.addEventListener('click', handleHeightResizeGlobalClick, true)
+
   // 绑定快捷键
   window.addEventListener('keydown', handleHeightResizeKeydown, true)
 
@@ -611,6 +645,9 @@ const exitHeightResizeMode = () => {
   // 移除滚动监听
   window.removeEventListener('scroll', handleHeightResizeScroll, true)
 
+  // 解绑全局点击事件
+  document.removeEventListener('click', handleHeightResizeGlobalClick, true)
+
   // 解绑快捷键
   window.removeEventListener('keydown', handleHeightResizeKeydown, true)
 
@@ -631,6 +668,9 @@ const cleanupHeightResizeMode = () => {
   window.removeEventListener('mousemove', handleHeightResizeMove)
   window.removeEventListener('mouseup', stopHeightResize)
   window.removeEventListener('scroll', handleHeightResizeScroll, true)
+
+  // 解绑全局点击事件
+  document.removeEventListener('click', handleHeightResizeGlobalClick, true)
 
   // 解绑快捷键
   window.removeEventListener('keydown', handleHeightResizeKeydown, true)
