@@ -216,21 +216,6 @@
                 <el-icon><Aim /></el-icon>
               </el-button>
             </el-tooltip>
-
-            <el-tooltip
-              :content="isHeightResizeMode ? '退出调高模式' : '调高'"
-              placement="top"
-              :show-after="400"
-              :hide-after="0"
-            >
-              <el-button
-                class="tool-btn height-resize-mode-trigger"
-                :class="{ active: isHeightResizeMode }"
-                @click="toggleHeightResizeMode"
-              >
-                <el-icon><Rank /></el-icon>
-              </el-button>
-            </el-tooltip>
           </div>
 
           <!-- 右侧：发送按钮 -->
@@ -255,7 +240,7 @@ import { ref, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import {
   ChatDotRound, Setting, MagicStick,
   ArrowRight, User, InfoFilled, Promotion, Tickets,
-  Aim, Rank, PriceTag, Close, Delete, Check
+  Aim, PriceTag, Close, Delete, Check
 } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useChatStore } from '@/stores/chat'
@@ -271,7 +256,6 @@ const messageListRef = ref<HTMLElement>()
 
 // 元素选择相关
 const isSelectingElement = ref(false)
-const isHeightResizeMode = ref(false)
 const selectedElements = ref<Array<{info: string}>>([])  // 存储多个选中的元素
 
 // 接受/拒绝按钮显示状态
@@ -308,15 +292,6 @@ const handleSuggestion = (text: string) => {
 const toggleElementSelector = () => {
   isSelectingElement.value = !isSelectingElement.value
   
-  // 进入选择模式时，退出其他模式
-  if (isSelectingElement.value) {
-    isHeightResizeMode.value = false
-
-    window.dispatchEvent(new CustomEvent('resume-height-resizer', {
-      detail: { active: false }
-    }))
-  }
-  
   // 发送事件到预览组件
   window.dispatchEvent(new CustomEvent('resume-element-selector', {
     detail: { 
@@ -325,27 +300,6 @@ const toggleElementSelector = () => {
       existingElements: isSelectingElement.value ? selectedElements.value.map(el => el.info) : []
     }
   }))
-}
-
-// 切换高度调整模式
-const toggleHeightResizeMode = () => {
-  isHeightResizeMode.value = !isHeightResizeMode.value
-
-  // 发送事件到预览组件
-  window.dispatchEvent(new CustomEvent('resume-height-resizer', {
-    detail: { active: isHeightResizeMode.value }
-  }))
-
-  // 进入高度调整模式时，退出其他模式
-  if (isHeightResizeMode.value) {
-    isSelectingElement.value = false
-
-    window.dispatchEvent(new CustomEvent('resume-element-selector', {
-      detail: { active: false }
-    }))
-
-    ElMessage.info('调高模式：点击模块后，拖拽底部手柄调整高度')
-  }
 }
 
 // 清除所有选中的元素
@@ -527,25 +481,16 @@ onMounted(() => {
   window.addEventListener('resume-element-selected', handleElementSelected as EventListener)
   // 监听选择模式状态变化（来自 ResumePreview.vue 的完成/取消按钮）
   window.addEventListener('resume-element-selector', handleSelectorStateChange as EventListener)
-  // 监听高度调整模式状态变化（来自 ResumePreview.vue 的主动退出）
-  window.addEventListener('resume-height-resizer-state-change', handleHeightResizerStateChange as EventListener)
 })
 
 onUnmounted(() => {
   window.removeEventListener('resume-element-selected', handleElementSelected as EventListener)
   window.removeEventListener('resume-element-selector', handleSelectorStateChange as EventListener)
-  // 移除高度调整模式状态变化事件监听
-  window.removeEventListener('resume-height-resizer-state-change', handleHeightResizerStateChange as EventListener)
 })
 
 // 处理选择模式状态变化
 const handleSelectorStateChange = (event: CustomEvent) => {
   isSelectingElement.value = event.detail.active
-}
-
-// 处理高度调整模式状态变化（来自 ResumePreview 的主动退出）
-const handleHeightResizerStateChange = (event: CustomEvent) => {
-  isHeightResizeMode.value = Boolean(event.detail.active)
 }
 
 // 清空聊天记录

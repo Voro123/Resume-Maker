@@ -41,7 +41,7 @@
     <!-- 简历预览 - 流式布局 + 分页线 -->
     <div v-else class="resume-preview-wrapper">
       <!-- 编辑提示 -->
-      <div class="edit-tip" v-if="showEditTip && !isSelectMode && !isHeightResizeMode && !isCopyElementMode">
+      <div class="edit-tip" v-if="showEditTip && !isSelectMode">
         <el-icon><Edit /></el-icon>
         <span>提示：点击简历中的任意文本即可直接编辑</span>
         <el-button text size="small" @click="showEditTip = false">关闭</el-button>
@@ -54,19 +54,13 @@
         <el-button text size="small" @click="cancelSelectMode">取消</el-button>
         <el-button type="primary" size="small" @click="finishSelectMode">完成</el-button>
       </div>
-
-      <!-- 工具模式提示条 -->
-      <div v-if="activeToolTip" class="tool-mode-tip" :class="activeToolClass">
-        <el-icon><InfoFilled /></el-icon>
-        <span>{{ activeToolTip }}</span>
-      </div>
       
       <!-- 简历内容显示 -->
       <div 
         class="resume-content" 
         v-html="resumeStore.generatedHTML" 
         ref="resumeContentRef"
-        :class="{ 'select-mode': isSelectMode, 'height-resize-mode': isHeightResizeMode }"
+        :class="{ 'select-mode': isSelectMode }"
       ></div>
     </div>
   </div>
@@ -99,17 +93,15 @@ const selectedElements = ref<Array<{element: HTMLElement, info: string}>>([])  /
 // 创建多个蒙层（每个选中元素一个）
 const selectedOverlays = ref<HTMLElement[]>([])
 
-// 高度调整模式相关状态
-const isHeightResizeMode = ref(false)
+// 高度调整相关状态（用于 undo/redo）
 const heightResizeTarget = ref<HTMLElement | null>(null)
 const heightResizeOverlay = ref<HTMLElement | null>(null)
-const heightResizeHoveredElement = ref<HTMLElement | null>(null)
-const heightResizeHoverOverlay = ref<HTMLElement | null>(null)
 
-// 常态点击聚焦元素操作：复制 / 删除
+// 常态点击聚焦元素操作：复制 / 删除 / 调高
 const elementActionTarget = ref<HTMLElement | null>(null)
 const elementActionOverlay = ref<HTMLElement | null>(null)
 const elementActionFocusOverlay = ref<HTMLElement | null>(null)
+const elementResizeHandleOverlay = ref<HTMLElement | null>(null)
 
 // undo/redo 状态
 type HeightResizeHistoryItem = {
@@ -131,19 +123,6 @@ let resizeBeforeMinHeight = ''
 
 // 防止一次点击被重复处理的锁
 let selectingLock = false
-
-// 工具模式提示
-const activeToolTip = computed(() => {
-  if (isSelectMode.value) return 'AI定位模式：点击简历元素后，可在对话框中描述修改需求'
-  if (isHeightResizeMode.value) return '调高模式：点击模块后，拖拽底部手柄调整高度'
-  return ''
-})
-
-const activeToolClass = computed(() => {
-  if (isSelectMode.value) return 'is-select'
-  if (isHeightResizeMode.value) return 'is-resize'
-  return ''
-})
 
 // ==================== 高度调整模式 - 元素路径工具函数 ====================
 
@@ -200,8 +179,14 @@ const applyHeightResizeHistoryItem = (
     target.style.minHeight = item.afterMinHeight
   }
 
-  heightResizeTarget.value = target
-  showHeightResizeOverlay(target)
+  // 如果当前聚焦的元素就是要调整的元素，更新聚焦框和工具条
+  if (elementActionTarget.value === target) {
+    showElementActionFocusOverlay(target)
+    showElementActionOverlay(target)
+    if (elementResizeHandleOverlay.value) {
+      showElementResizeHandleOverlay(target)
+    }
+  }
 
   saveEditedHTML()
   addPageBreaks()
@@ -246,14 +231,15 @@ const isEditableKeyboardTarget = (target: EventTarget | null): boolean => {
   )
 }
 
-// 处理高度调整模式的快捷键
+// 处理高度调整快捷键（Ctrl+Z / Ctrl+Y）
 const handleHeightResizeKeydown = (e: KeyboardEvent) => {
-  if (!isHeightResizeMode.value) return
   if (isEditableKeyboardTarget(e.target)) return
 
   const key = e.key.toLowerCase()
 
   if ((e.ctrlKey || e.metaKey) && key === 'z' && !e.shiftKey) {
+    if (heightResizeUndoStack.value.length === 0) return
+
     e.preventDefault()
     e.stopPropagation()
     undoHeightResize()
@@ -264,41 +250,12 @@ const handleHeightResizeKeydown = (e: KeyboardEvent) => {
     ((e.ctrlKey || e.metaKey) && key === 'y') ||
     ((e.ctrlKey || e.metaKey) && e.shiftKey && key === 'z')
   ) {
+    if (heightResizeRedoStack.value.length === 0) return
+
     e.preventDefault()
     e.stopPropagation()
     redoHeightResize()
   }
-}
-
-// 处理全局点击事件：点击简历外部区域时退出高度调整模式
-const handleHeightResizeGlobalClick = (e: MouseEvent) => {
-  if (!isHeightResizeMode.value || isResizingHeight) return
-
-  const target = e.target as HTMLElement | null
-  if (!target) return
-
-  // 点击调整高度按钮本身，不退出
-  if (target.closest('.height-resize-mode-trigger')) {
-    return
-  }
-
-  // 点击拖拽手柄，不退出
-  if (target.closest('.height-resize-handle')) {
-    return
-  }
-
-  // 点击简历内容内部，交给 handleHeightResizeElementClick 处理
-  if (resumeContentRef.value?.contains(target)) {
-    return
-  }
-
-  // 点击预览内容外部：退出高度调整模式
-  exitHeightResizeMode()
-
-  // 通知 ChatPanel 同步按钮 active 状态
-  window.dispatchEvent(new CustomEvent('resume-height-resizer-state-change', {
-    detail: { active: false }
-  }))
 }
 
 // 创建或获取蒙层元素（用于悬浮高亮）
@@ -380,162 +337,26 @@ const findHeightResizableElement = (el: HTMLElement): HTMLElement | null => {
   return null
 }
 
-// 移除高度调整 overlay
-const removeHeightResizeOverlay = () => {
-  if (heightResizeOverlay.value) {
-    heightResizeOverlay.value.remove()
-    heightResizeOverlay.value = null
-  }
-}
-
-// 显示高度调整 overlay
-const showHeightResizeOverlay = (target: HTMLElement) => {
-  removeHeightResizeOverlay()
-
-  const rect = target.getBoundingClientRect()
-
-  const overlay = document.createElement('div')
-  overlay.className = 'height-resize-overlay'
-  overlay.style.position = 'fixed'
-  overlay.style.top = `${rect.top}px`
-  overlay.style.left = `${rect.left}px`
-  overlay.style.width = `${rect.width}px`
-  overlay.style.height = `${rect.height}px`
-  overlay.style.outline = '2px solid #67c23a'
-  overlay.style.outlineOffset = '-1px'
-  overlay.style.pointerEvents = 'none'
-  overlay.style.zIndex = '10000'
-  overlay.style.borderRadius = '2px'
-
-  const handle = document.createElement('div')
-  handle.className = 'height-resize-handle'
-  handle.title = '拖拽调整高度'
-  handle.style.position = 'absolute'
-  handle.style.left = '50%'
-  handle.style.bottom = '-7px'
-  handle.style.transform = 'translateX(-50%)'
-  handle.style.width = '56px'
-  handle.style.height = '12px'
-  handle.style.borderRadius = '999px'
-  handle.style.background = '#67c23a'
-  handle.style.cursor = 'ns-resize'
-  handle.style.pointerEvents = 'auto'
-  handle.style.boxShadow = '0 2px 6px rgba(0, 0, 0, 0.2)'
-
-  handle.addEventListener('mousedown', startHeightResize)
-
-  overlay.appendChild(handle)
-  document.body.appendChild(overlay)
-
-  heightResizeOverlay.value = overlay
-}
-
-// 移除高度调整 hover overlay
-const removeHeightResizeHoverOverlay = () => {
-  if (heightResizeHoverOverlay.value) {
-    heightResizeHoverOverlay.value.remove()
-    heightResizeHoverOverlay.value = null
-  }
-}
-
-// 显示高度调整 hover overlay（绿色虚线高亮）
-const showHeightResizeHoverOverlay = (target: HTMLElement) => {
-  const rect = target.getBoundingClientRect()
-
-  let overlay = heightResizeHoverOverlay.value
-
-  if (!overlay) {
-    overlay = document.createElement('div')
-    overlay.className = 'height-resize-hover-overlay'
-    overlay.style.position = 'fixed'
-    overlay.style.pointerEvents = 'none'
-    overlay.style.zIndex = '9999'
-    overlay.style.borderRadius = '3px'
-    overlay.style.backgroundColor = 'rgba(103, 194, 58, 0.10)'
-    overlay.style.outline = '2px dashed rgba(103, 194, 58, 0.85)'
-    overlay.style.outlineOffset = '-1px'
-    overlay.style.transition = 'all 0.12s ease'
-    document.body.appendChild(overlay)
-
-    heightResizeHoverOverlay.value = overlay
-  }
-
-  overlay.style.top = `${rect.top}px`
-  overlay.style.left = `${rect.left}px`
-  overlay.style.width = `${rect.width}px`
-  overlay.style.height = `${rect.height}px`
-  overlay.style.display = 'block'
-}
-
-// 处理高度调整模式的鼠标移动（hover 效果）
-const handleHeightResizeMouseMove = (e: MouseEvent) => {
-  if (!isHeightResizeMode.value || isResizingHeight) return
-
-  const rawTarget = e.target as HTMLElement
-  const target = findHeightResizableElement(rawTarget)
-
-  if (!target) {
-    heightResizeHoveredElement.value = null
-    removeHeightResizeHoverOverlay()
-    return
-  }
-
-  heightResizeHoveredElement.value = target
-  showHeightResizeHoverOverlay(target)
-
-  e.stopPropagation()
-}
-
-// 处理鼠标离开简历内容区域
-const handleHeightResizeMouseLeave = () => {
-  if (!isHeightResizeMode.value || isResizingHeight) return
-
-  heightResizeHoveredElement.value = null
-  removeHeightResizeHoverOverlay()
-}
-
-// 处理高度调整模式下的元素点击
-const handleHeightResizeElementClick = (e: MouseEvent) => {
-  if (!isHeightResizeMode.value) return
-
-  e.preventDefault()
-  e.stopPropagation()
-
-  const rawTarget = e.target as HTMLElement
-  const target = findHeightResizableElement(rawTarget)
-
-  if (!target) {
-    // 点击空白或不可调整位置，取消当前选中目标
-    heightResizeTarget.value = null
-    heightResizeHoveredElement.value = null
-    removeHeightResizeOverlay()
-    removeHeightResizeHoverOverlay()
-    return
-  }
-
-  heightResizeTarget.value = target
-  heightResizeHoveredElement.value = null
-  removeHeightResizeHoverOverlay()
-  showHeightResizeOverlay(target)
-}
-
 // 开始拖拽调整高度
 const startHeightResize = (e: MouseEvent) => {
-  if (!heightResizeTarget.value) return
+  const target = elementActionTarget.value
+
+  if (!target || !resumeContentRef.value?.contains(target)) {
+    return
+  }
 
   e.preventDefault()
   e.stopPropagation()
 
-  removeHeightResizeHoverOverlay()
-  heightResizeHoveredElement.value = null
+  removeElementResizeHandleOverlay()
 
   isResizingHeight = true
   resizeStartY = e.clientY
-  resizeStartHeight = heightResizeTarget.value.getBoundingClientRect().height
+  resizeStartHeight = target.getBoundingClientRect().height
 
   // 记录调整前的状态
-  resizeBeforeHeight = heightResizeTarget.value.style.height || ''
-  resizeBeforeMinHeight = heightResizeTarget.value.style.minHeight || ''
+  resizeBeforeHeight = target.style.height || ''
+  resizeBeforeMinHeight = target.style.minHeight || ''
 
   document.body.style.cursor = 'ns-resize'
   document.body.style.userSelect = 'none'
@@ -546,35 +367,34 @@ const startHeightResize = (e: MouseEvent) => {
 
 // 拖拽过程中实时调整高度
 const handleHeightResizeMove = (e: MouseEvent) => {
-  if (!isResizingHeight || !heightResizeTarget.value) return
+  const target = elementActionTarget.value
+
+  if (!isResizingHeight || !target) return
 
   const deltaY = e.clientY - resizeStartY
   const nextHeight = Math.max(24, Math.round(resizeStartHeight + deltaY))
 
-  heightResizeTarget.value.style.height = `${nextHeight}px`
-  heightResizeTarget.value.style.minHeight = `${nextHeight}px`
+  target.style.height = `${nextHeight}px`
+  target.style.minHeight = `${nextHeight}px`
 
-  showHeightResizeOverlay(heightResizeTarget.value)
+  showElementActionFocusOverlay(target)
+  showElementActionOverlay(target)
+  showElementResizeHandleOverlay(target)
 }
 
 // 停止拖拽并保存
 const stopHeightResize = () => {
   if (!isResizingHeight) return
 
-  const target = heightResizeTarget.value
+  const target = elementActionTarget.value
 
   isResizingHeight = false
 
   window.removeEventListener('mousemove', handleHeightResizeMove)
   window.removeEventListener('mouseup', stopHeightResize)
 
+  document.body.style.cursor = ''
   document.body.style.userSelect = ''
-
-  if (isHeightResizeMode.value) {
-    document.body.style.cursor = 'ns-resize'
-  } else {
-    document.body.style.cursor = ''
-  }
 
   if (target) {
     const afterHeight = target.style.height || ''
@@ -604,7 +424,9 @@ const stopHeightResize = () => {
     addPageBreaks()
 
     // 重新显示 overlay
-    showHeightResizeOverlay(target)
+    showElementActionFocusOverlay(target)
+    showElementActionOverlay(target)
+    showElementResizeHandleOverlay(target)
   }
 
   // 清空 before 状态
@@ -612,146 +434,11 @@ const stopHeightResize = () => {
   resizeBeforeMinHeight = ''
 }
 
-// 处理滚动事件，更新 overlay 位置
-const handleHeightResizeScroll = () => {
-  if (heightResizeHoveredElement.value && heightResizeHoverOverlay.value) {
-    showHeightResizeHoverOverlay(heightResizeHoveredElement.value)
-  }
-
-  if (heightResizeTarget.value && heightResizeOverlay.value) {
-    showHeightResizeOverlay(heightResizeTarget.value)
-  }
-}
-
-// 进入高度调整模式
-const enterHeightResizeMode = () => {
-  // 清空复制/删除聚焦
-  clearElementActionFocus()
-
-  isHeightResizeMode.value = true
-
-  // 避免和原来的 AI 选元素模式冲突
-  if (isSelectMode.value) {
-    exitSelectMode()
-  }
-
-  document.body.style.cursor = 'crosshair'
-
-  if (resumeContentRef.value) {
-    resumeContentRef.value.addEventListener('mousemove', handleHeightResizeMouseMove)
-    resumeContentRef.value.addEventListener('mouseleave', handleHeightResizeMouseLeave)
-    resumeContentRef.value.addEventListener('click', handleHeightResizeElementClick, true)
-  }
-
-  // 监听滚动事件
-  window.addEventListener('scroll', handleHeightResizeScroll, true)
-
-  // 绑定全局点击事件（捕获阶段）：点击外部区域退出模式
-  document.addEventListener('click', handleHeightResizeGlobalClick, true)
-
-  // 绑定快捷键
-  window.addEventListener('keydown', handleHeightResizeKeydown, true)
-
-  ElMessage.info('高度调整模式：鼠标悬浮到可调整元素上，点击后拖拽底部手柄调整高度')
-}
-
-// 退出高度调整模式
-const exitHeightResizeMode = () => {
-  isHeightResizeMode.value = false
-
-  if (!isResizingHeight) {
-    document.body.style.cursor = ''
-  }
-
-  if (resumeContentRef.value) {
-    resumeContentRef.value.removeEventListener('mousemove', handleHeightResizeMouseMove)
-    resumeContentRef.value.removeEventListener('mouseleave', handleHeightResizeMouseLeave)
-    resumeContentRef.value.removeEventListener('click', handleHeightResizeElementClick, true)
-  }
-
-  // 移除滚动监听
-  window.removeEventListener('scroll', handleHeightResizeScroll, true)
-
-  // 解绑全局点击事件
-  document.removeEventListener('click', handleHeightResizeGlobalClick, true)
-
-  // 解绑快捷键
-  window.removeEventListener('keydown', handleHeightResizeKeydown, true)
-
-  removeHeightResizeHoverOverlay()
-  removeHeightResizeOverlay()
-  heightResizeHoveredElement.value = null
-  heightResizeTarget.value = null
-}
-
-// 清理高度调整模式
-const cleanupHeightResizeMode = () => {
-  if (resumeContentRef.value) {
-    resumeContentRef.value.removeEventListener('mousemove', handleHeightResizeMouseMove)
-    resumeContentRef.value.removeEventListener('mouseleave', handleHeightResizeMouseLeave)
-    resumeContentRef.value.removeEventListener('click', handleHeightResizeElementClick, true)
-  }
-
-  window.removeEventListener('mousemove', handleHeightResizeMove)
-  window.removeEventListener('mouseup', stopHeightResize)
-  window.removeEventListener('scroll', handleHeightResizeScroll, true)
-
-  // 解绑全局点击事件
-  document.removeEventListener('click', handleHeightResizeGlobalClick, true)
-
-  // 解绑快捷键
-  window.removeEventListener('keydown', handleHeightResizeKeydown, true)
-
-  removeHeightResizeHoverOverlay()
-  removeHeightResizeOverlay()
-
-  isHeightResizeMode.value = false
-  isResizingHeight = false
-  heightResizeHoveredElement.value = null
-  heightResizeTarget.value = null
-
-  document.body.style.cursor = ''
-  document.body.style.userSelect = ''
-}
-
-// 处理高度调整事件
-const handleHeightResizerEvent = (event: CustomEvent) => {
-  if (event.detail.active) {
-    // 确保关掉其他模式
-    if (isSelectMode.value) {
-      exitSelectMode()
-    }
-
-    enterHeightResizeMode()
-  } else {
-    exitHeightResizeMode()
-  }
-}
-
-// 处理复制元素事件
-const handleElementCopierEvent = (event: CustomEvent) => {
-  if (event.detail.active) {
-    // 确保关掉其他模式
-    if (isSelectMode.value) {
-      exitSelectMode()
-    }
-
-    if (isHeightResizeMode.value) {
-      exitHeightResizeMode()
-    }
-
-    enterCopyElementMode()
-  } else {
-    exitCopyElementMode()
-  }
-}
-
-// ==================== 常态点击聚焦元素操作：复制 / 删除 ====================
+// ==================== 常态点击聚焦元素操作：复制 / 删除 / 调高 ====================
 
 const shouldSuppressElementActions = () => {
   return (
     isSelectMode.value ||
-    isHeightResizeMode.value ||
     isResizingHeight ||
     resumeStore.isGenerating ||
     !resumeStore.generatedHTML
@@ -778,9 +465,7 @@ const handleElementActionClick = (e: MouseEvent) => {
   // 避免和动态 overlay 互相干扰
   if (
     rawTarget.closest('.element-select-overlay') ||
-    rawTarget.closest('.element-selected-overlay') ||
-    rawTarget.closest('.height-resize-overlay') ||
-    rawTarget.closest('.height-resize-hover-overlay')
+    rawTarget.closest('.element-selected-overlay')
   ) {
     return
   }
@@ -798,6 +483,7 @@ const handleElementActionClick = (e: MouseEvent) => {
   }
 
   elementActionTarget.value = target
+  removeElementResizeHandleOverlay()
   showElementActionFocusOverlay(target)
   showElementActionOverlay(target)
 }
@@ -897,16 +583,18 @@ const showElementActionOverlay = (target: HTMLElement) => {
     overlay.style.pointerEvents = 'auto'
 
     const copyBtn = createElementActionButton('复制', '⧉', handleCopyActionClick)
+    const resizeBtn = createElementActionButton('调高', '↕', handleStartResizeActionClick)
     const deleteBtn = createElementActionButton('删除', '×', handleDeleteActionClick, true)
 
     overlay.appendChild(copyBtn)
+    overlay.appendChild(resizeBtn)
     overlay.appendChild(deleteBtn)
 
     document.body.appendChild(overlay)
     elementActionOverlay.value = overlay
   }
 
-  const overlayWidth = 72
+  const overlayWidth = 108
   const overlayHeight = 32
 
   let top = rect.top - overlayHeight - 6
@@ -1056,6 +744,78 @@ const canDeleteElement = (target: HTMLElement) => {
   return true
 }
 
+// ==================== 调高操作 ====================
+
+const handleStartResizeActionClick = (e: MouseEvent) => {
+  e.preventDefault()
+  e.stopPropagation()
+
+  const target = elementActionTarget.value
+
+  if (!target || !resumeContentRef.value?.contains(target)) {
+    return
+  }
+
+  if (!isHeightResizableElement(target)) {
+    ElMessage.warning('该元素不适合调整高度，请选择外层模块或图片')
+    return
+  }
+
+  showElementResizeHandleOverlay(target)
+}
+
+const removeElementResizeHandleOverlay = () => {
+  if (elementResizeHandleOverlay.value) {
+    elementResizeHandleOverlay.value.remove()
+    elementResizeHandleOverlay.value = null
+  }
+}
+
+const showElementResizeHandleOverlay = (target: HTMLElement) => {
+  const rect = target.getBoundingClientRect()
+
+  let overlay = elementResizeHandleOverlay.value
+
+  if (!overlay) {
+    overlay = document.createElement('div')
+    overlay.className = 'element-resize-handle-overlay'
+    overlay.style.position = 'fixed'
+    overlay.style.pointerEvents = 'none'
+    overlay.style.zIndex = '10025'
+    overlay.style.borderRadius = '3px'
+    overlay.style.backgroundColor = 'rgba(103, 194, 58, 0.06)'
+    overlay.style.outline = '2px solid #67c23a'
+    overlay.style.outlineOffset = '-1px'
+
+    const handle = document.createElement('div')
+    handle.className = 'element-resize-height-handle'
+    handle.title = '拖拽调整高度'
+    handle.style.position = 'absolute'
+    handle.style.left = '50%'
+    handle.style.bottom = '-7px'
+    handle.style.transform = 'translateX(-50%)'
+    handle.style.width = '56px'
+    handle.style.height = '12px'
+    handle.style.borderRadius = '999px'
+    handle.style.background = '#67c23a'
+    handle.style.cursor = 'ns-resize'
+    handle.style.pointerEvents = 'auto'
+    handle.style.boxShadow = '0 2px 6px rgba(0, 0, 0, 0.2)'
+
+    handle.addEventListener('mousedown', startHeightResize)
+
+    overlay.appendChild(handle)
+    document.body.appendChild(overlay)
+    elementResizeHandleOverlay.value = overlay
+  }
+
+  overlay.style.top = `${rect.top}px`
+  overlay.style.left = `${rect.left}px`
+  overlay.style.width = `${rect.width}px`
+  overlay.style.height = `${rect.height}px`
+  overlay.style.display = 'block'
+}
+
 // ==================== 滚动和监听管理 ====================
 
 const handleElementActionScroll = () => {
@@ -1066,6 +826,10 @@ const handleElementActionScroll = () => {
 
   showElementActionFocusOverlay(elementActionTarget.value)
   showElementActionOverlay(elementActionTarget.value)
+
+  if (elementResizeHandleOverlay.value) {
+    showElementResizeHandleOverlay(elementActionTarget.value)
+  }
 }
 
 const setupElementActionFocusListeners = () => {
@@ -1083,6 +847,9 @@ const setupElementActionFocusListeners = () => {
 
   window.removeEventListener('keydown', handleElementActionKeydown, true)
   window.addEventListener('keydown', handleElementActionKeydown, true)
+  
+  window.removeEventListener('keydown', handleHeightResizeKeydown, true)
+  window.addEventListener('keydown', handleHeightResizeKeydown, true)
 }
 
 const cleanupElementActionFocus = () => {
@@ -1093,9 +860,11 @@ const cleanupElementActionFocus = () => {
   document.removeEventListener('click', handleElementActionGlobalClick, true)
   window.removeEventListener('scroll', handleElementActionScroll, true)
   window.removeEventListener('keydown', handleElementActionKeydown, true)
+  window.removeEventListener('keydown', handleHeightResizeKeydown, true)
 
   removeElementActionOverlay()
   removeElementActionFocusOverlay()
+  removeElementResizeHandleOverlay()
   elementActionTarget.value = null
 }
 
@@ -1637,9 +1406,6 @@ onMounted(() => {
   // 监听元素选择器事件
   window.addEventListener('resume-element-selector', handleSelectorEvent as EventListener)
   
-  // 监听高度调整模式事件
-  window.addEventListener('resume-height-resizer', handleHeightResizerEvent as EventListener)
-  
   // 监听元素选中事件（用于多选时移除单个元素）
   window.addEventListener('resume-element-remove', ((e: Event) => {
     const customEvent = e as CustomEvent
@@ -1675,9 +1441,6 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
-  // 清理高度调整模式
-  cleanupHeightResizeMode()
-
   // 清理常态点击聚焦操作
   cleanupElementActionFocus()
   
@@ -1690,7 +1453,6 @@ onUnmounted(() => {
   
   // 移除事件监听
   window.removeEventListener('resume-element-selector', handleSelectorEvent as EventListener)
-  window.removeEventListener('resume-height-resizer', handleHeightResizerEvent as EventListener)
   window.removeEventListener('resume-element-highlight', ((e: Event) => {
     const customEvent = e as CustomEvent
     highlightTargetElement(customEvent.detail.elementInfo)
