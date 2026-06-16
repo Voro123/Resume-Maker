@@ -161,11 +161,8 @@ export const injectPrintStyles = (element?: HTMLElement) => {
   style.id = styleId
   style.textContent = `
     @media print {
-      .page-break-avoid,
       h1, h2, h3, h4,
       .section-title {
-        break-inside: avoid !important;
-        page-break-inside: avoid !important;
         break-after: avoid !important;
         page-break-after: avoid !important;
       }
@@ -180,10 +177,10 @@ export const injectPrintStyles = (element?: HTMLElement) => {
         size: A4;
       }
 
-      .no-print, 
-      button, 
+      .no-print,
+      button,
       .el-button,
-      nav, 
+      nav,
       header:not(.resume-header) {
         display: none !important;
       }
@@ -192,23 +189,6 @@ export const injectPrintStyles = (element?: HTMLElement) => {
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important;
       }
-
-      body,
-      .page-wrapper,
-      .resume-container,
-      .resume-content {
-        padding: 0 !important;
-        margin: 0 !important;
-      }
-    }
-    
-    /* 屏幕预览时也应用样式 */
-    .resume-content {
-      width: 210mm;
-      min-height: 297mm;
-      margin: 0 auto;
-      background: white;
-      box-shadow: 0 2px 12px rgba(0,0,0,0.1);
     }
   `
   
@@ -230,15 +210,6 @@ export const injectPrintStyles = (element?: HTMLElement) => {
 // 检测并优化分页
 export const optimizePageBreaks = (element: HTMLElement) => {
   if (!element) return
-  
-  // 为所有 section 添加避免分页的 class
-  const sections = element.querySelectorAll('section, .section, div[class*="section"]')
-  sections.forEach((el) => {
-    const htmlEl = el as HTMLElement
-    htmlEl.classList.add('page-break-avoid')
-    htmlEl.style.breakInside = 'avoid'
-    htmlEl.style.pageBreakInside = 'avoid'
-  })
   
   // 为所有标题添加避免底部孤立的样式
   const headings = element.querySelectorAll('h1, h2, h3, h4, .section-title')
