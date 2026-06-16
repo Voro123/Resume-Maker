@@ -41,7 +41,7 @@
     <!-- 简历预览 - 流式布局 + 分页线 -->
     <div v-else class="resume-preview-wrapper">
       <!-- 编辑提示 -->
-      <div class="edit-tip" v-if="showEditTip && !isSelectMode">
+      <div class="edit-tip" v-if="showEditTip && !isSelectMode && !isHeightResizeMode && !isCopyElementMode">
         <el-icon><Edit /></el-icon>
         <span>提示：点击简历中的任意文本即可直接编辑</span>
         <el-button text size="small" @click="showEditTip = false">关闭</el-button>
@@ -54,20 +54,26 @@
         <el-button text size="small" @click="cancelSelectMode">取消</el-button>
         <el-button type="primary" size="small" @click="finishSelectMode">完成</el-button>
       </div>
+
+      <!-- 工具模式提示条 -->
+      <div v-if="activeToolTip" class="tool-mode-tip" :class="activeToolClass">
+        <el-icon><InfoFilled /></el-icon>
+        <span>{{ activeToolTip }}</span>
+      </div>
       
       <!-- 简历内容显示 -->
       <div 
         class="resume-content" 
         v-html="resumeStore.generatedHTML" 
         ref="resumeContentRef"
-        :class="{ 'select-mode': isSelectMode }"
+        :class="{ 'select-mode': isSelectMode, 'height-resize-mode': isHeightResizeMode, 'copy-mode': isCopyElementMode }"
       ></div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { 
   Loading, 
   Document, 
@@ -100,6 +106,11 @@ const heightResizeOverlay = ref<HTMLElement | null>(null)
 const heightResizeHoveredElement = ref<HTMLElement | null>(null)
 const heightResizeHoverOverlay = ref<HTMLElement | null>(null)
 
+// 复制元素模式相关状态
+const isCopyElementMode = ref(false)
+const copyHoveredElement = ref<HTMLElement | null>(null)
+const copyHoverOverlay = ref<HTMLElement | null>(null)
+
 // undo/redo 状态
 type HeightResizeHistoryItem = {
   elementPath: number[]
@@ -120,6 +131,21 @@ let resizeBeforeMinHeight = ''
 
 // 防止一次点击被重复处理的锁
 let selectingLock = false
+
+// 工具模式提示
+const activeToolTip = computed(() => {
+  if (isSelectMode.value) return 'AI定位模式：点击简历元素后，可在对话框中描述修改需求'
+  if (isCopyElementMode.value) return '复制模式：点击任意简历元素，将在原位置后复制一份'
+  if (isHeightResizeMode.value) return '调高模式：点击模块后，拖拽底部手柄调整高度'
+  return ''
+})
+
+const activeToolClass = computed(() => {
+  if (isSelectMode.value) return 'is-select'
+  if (isCopyElementMode.value) return 'is-copy'
+  if (isHeightResizeMode.value) return 'is-resize'
+  return ''
+})
 
 // ==================== 高度调整模式 - 元素路径工具函数 ====================
 
@@ -690,9 +716,256 @@ const cleanupHeightResizeMode = () => {
 // 处理高度调整事件
 const handleHeightResizerEvent = (event: CustomEvent) => {
   if (event.detail.active) {
+    // 确保关掉其他模式
+    if (isCopyElementMode.value) {
+      exitCopyElementMode()
+    }
+
+    if (isSelectMode.value) {
+      exitSelectMode()
+    }
+
     enterHeightResizeMode()
   } else {
     exitHeightResizeMode()
+  }
+}
+
+// 处理复制元素事件
+const handleElementCopierEvent = (event: CustomEvent) => {
+  if (event.detail.active) {
+    // 确保关掉其他模式
+    if (isSelectMode.value) {
+      exitSelectMode()
+    }
+
+    if (isHeightResizeMode.value) {
+      exitHeightResizeMode()
+    }
+
+    enterCopyElementMode()
+  } else {
+    exitCopyElementMode()
+  }
+}
+
+// ==================== 复制元素模式相关函数 ====================
+
+// 移除复制 hover 蒙层
+const removeCopyHoverOverlay = () => {
+  if (copyHoverOverlay.value) {
+    copyHoverOverlay.value.remove()
+    copyHoverOverlay.value = null
+  }
+}
+
+// 显示复制 hover 蒙层（紫色）
+const showCopyHoverOverlay = (target: HTMLElement) => {
+  const rect = target.getBoundingClientRect()
+
+  let overlay = copyHoverOverlay.value
+
+  if (!overlay) {
+    overlay = document.createElement('div')
+    overlay.className = 'element-copy-hover-overlay'
+    overlay.style.position = 'fixed'
+    overlay.style.pointerEvents = 'none'
+    overlay.style.zIndex = '9999'
+    overlay.style.borderRadius = '3px'
+    overlay.style.backgroundColor = 'rgba(126, 87, 194, 0.10)'
+    overlay.style.outline = '2px dashed rgba(126, 87, 194, 0.9)'
+    overlay.style.outlineOffset = '-1px'
+    overlay.style.transition = 'all 0.12s ease'
+    document.body.appendChild(overlay)
+
+    copyHoverOverlay.value = overlay
+  }
+
+  overlay.style.top = `${rect.top}px`
+  overlay.style.left = `${rect.left}px`
+  overlay.style.width = `${rect.width}px`
+  overlay.style.height = `${rect.height}px`
+  overlay.style.display = 'block'
+}
+
+// 复制元素鼠标移动
+const handleCopyElementMouseMove = (e: MouseEvent) => {
+  if (!isCopyElementMode.value) return
+
+  const rawTarget = e.target as HTMLElement
+
+  if (rawTarget === resumeContentRef.value) {
+    copyHoveredElement.value = null
+    removeCopyHoverOverlay()
+    return
+  }
+
+  const target = findSelectableElement(rawTarget)
+
+  if (!target || target === resumeContentRef.value) {
+    copyHoveredElement.value = null
+    removeCopyHoverOverlay()
+    return
+  }
+
+  copyHoveredElement.value = target
+  showCopyHoverOverlay(target)
+
+  e.stopPropagation()
+}
+
+// 复制元素鼠标离开
+const handleCopyElementMouseLeave = () => {
+  if (!isCopyElementMode.value) return
+
+  copyHoveredElement.value = null
+  removeCopyHoverOverlay()
+}
+
+// 复制元素点击
+const handleCopyElementClick = (e: MouseEvent) => {
+  if (!isCopyElementMode.value) return
+
+  e.preventDefault()
+  e.stopPropagation()
+
+  const rawTarget = e.target as HTMLElement
+
+  if (rawTarget === resumeContentRef.value) {
+    exitCopyElementMode()
+    notifyCopyModeInactive()
+    return
+  }
+
+  const target = findSelectableElement(rawTarget)
+
+  if (!target || target === resumeContentRef.value) {
+    exitCopyElementMode()
+    notifyCopyModeInactive()
+    return
+  }
+
+  copyElementAfterSelf(target)
+
+  exitCopyElementMode()
+  notifyCopyModeInactive()
+}
+
+// 复制元素到自身后面
+const copyElementAfterSelf = (target: HTMLElement) => {
+  const parent = target.parentElement
+
+  if (!parent) {
+    ElMessage.warning('无法复制该元素')
+    return
+  }
+
+  const cloned = target.cloneNode(true) as HTMLElement
+
+  // 避免复制编辑态/选中态 class
+  cloned.classList.remove('editing', 'select-mode')
+
+  // 清理可能复制到的 id，避免 DOM id 重复
+  cloned.removeAttribute('id')
+  cloned.querySelectorAll('[id]').forEach((el) => {
+    el.removeAttribute('id')
+  })
+
+  target.insertAdjacentElement('afterend', cloned)
+
+  saveEditedHTML()
+  addPageBreaks()
+
+  ElMessage.success('已复制元素')
+}
+
+// 复制元素全局点击处理
+const handleCopyElementGlobalClick = (e: MouseEvent) => {
+  if (!isCopyElementMode.value) return
+
+  const target = e.target as HTMLElement | null
+  if (!target) return
+
+  // 点击复制按钮本身，不退出
+  if (target.closest('.element-copy-mode-trigger')) {
+    return
+  }
+
+  // 点击简历内部，交给 handleCopyElementClick
+  if (resumeContentRef.value?.contains(target)) {
+    return
+  }
+
+  exitCopyElementMode()
+  notifyCopyModeInactive()
+}
+
+// 通知复制模式状态变化
+const notifyCopyModeInactive = () => {
+  window.dispatchEvent(new CustomEvent('resume-element-copier-state-change', {
+    detail: { active: false }
+  }))
+}
+
+// 复制元素滚动处理
+const handleCopyElementScroll = () => {
+  if (copyHoveredElement.value && copyHoverOverlay.value) {
+    showCopyHoverOverlay(copyHoveredElement.value)
+  }
+}
+
+// 进入复制元素模式
+const enterCopyElementMode = () => {
+  isCopyElementMode.value = true
+
+  document.body.style.cursor = 'copy'
+
+  if (resumeContentRef.value) {
+    resumeContentRef.value.addEventListener('mousemove', handleCopyElementMouseMove)
+    resumeContentRef.value.addEventListener('mouseleave', handleCopyElementMouseLeave)
+    resumeContentRef.value.addEventListener('click', handleCopyElementClick, true)
+  }
+
+  document.addEventListener('click', handleCopyElementGlobalClick, true)
+  window.addEventListener('scroll', handleCopyElementScroll, true)
+}
+
+// 退出复制元素模式
+const exitCopyElementMode = () => {
+  isCopyElementMode.value = false
+
+  document.body.style.cursor = ''
+
+  if (resumeContentRef.value) {
+    resumeContentRef.value.removeEventListener('mousemove', handleCopyElementMouseMove)
+    resumeContentRef.value.removeEventListener('mouseleave', handleCopyElementMouseLeave)
+    resumeContentRef.value.removeEventListener('click', handleCopyElementClick, true)
+  }
+
+  document.removeEventListener('click', handleCopyElementGlobalClick, true)
+  window.removeEventListener('scroll', handleCopyElementScroll, true)
+
+  copyHoveredElement.value = null
+  removeCopyHoverOverlay()
+}
+
+// 清理复制元素模式
+const cleanupCopyElementMode = () => {
+  if (resumeContentRef.value) {
+    resumeContentRef.value.removeEventListener('mousemove', handleCopyElementMouseMove)
+    resumeContentRef.value.removeEventListener('mouseleave', handleCopyElementMouseLeave)
+    resumeContentRef.value.removeEventListener('click', handleCopyElementClick, true)
+  }
+
+  document.removeEventListener('click', handleCopyElementGlobalClick, true)
+  window.removeEventListener('scroll', handleCopyElementScroll, true)
+
+  isCopyElementMode.value = false
+  copyHoveredElement.value = null
+  removeCopyHoverOverlay()
+
+  if (!isSelectMode.value && !isHeightResizeMode.value) {
+    document.body.style.cursor = ''
   }
 }
 
@@ -1232,6 +1505,9 @@ onMounted(() => {
   // 监听高度调整模式事件
   window.addEventListener('resume-height-resizer', handleHeightResizerEvent as EventListener)
   
+  // 监听复制元素模式事件
+  window.addEventListener('resume-element-copier', handleElementCopierEvent as EventListener)
+  
   // 监听元素选中事件（用于多选时移除单个元素）
   window.addEventListener('resume-element-remove', ((e: Event) => {
     const customEvent = e as CustomEvent
@@ -1267,6 +1543,9 @@ onUnmounted(() => {
   // 清理高度调整模式
   cleanupHeightResizeMode()
 
+  // 清理复制元素模式
+  cleanupCopyElementMode()
+  
   // 移除 resumeContentRef 上的事件监听，避免组件销毁后残留
   if (resumeContentRef.value) {
     resumeContentRef.value.removeEventListener('mousemove', handleMouseMove)
@@ -1277,6 +1556,7 @@ onUnmounted(() => {
   // 移除事件监听
   window.removeEventListener('resume-element-selector', handleSelectorEvent as EventListener)
   window.removeEventListener('resume-height-resizer', handleHeightResizerEvent as EventListener)
+  window.removeEventListener('resume-element-copier', handleElementCopierEvent as EventListener)
   window.removeEventListener('resume-element-highlight', ((e: Event) => {
     const customEvent = e as CustomEvent
     highlightTargetElement(customEvent.detail.elementInfo)
@@ -1477,6 +1757,40 @@ $transition-normal: 0.3s ease;
   max-width: none;
   margin: 0 auto;
   animation: fadeInUp 0.5s ease;
+}
+
+// 工具模式提示条
+.tool-mode-tip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  border: 1px solid transparent;
+
+  .el-icon {
+    font-size: 14px;
+  }
+
+  &.is-select {
+    color: #1d4ed8;
+    background: #eff6ff;
+    border-color: #bfdbfe;
+  }
+
+  &.is-copy {
+    color: #6d28d9;
+    background: #f5f3ff;
+    border-color: #ddd6fe;
+  }
+
+  &.is-resize {
+    color: #15803d;
+    background: #f0fdf4;
+    border-color: #bbf7d0;
+  }
 }
 
 @keyframes fadeInUp {

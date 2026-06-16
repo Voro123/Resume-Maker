@@ -202,9 +202,9 @@
         <div class="chat-input-actions">
           <!-- 左侧：工具按钮 -->
           <div class="input-tools">
-            <el-tooltip content="选择简历元素用于 AI 修改" placement="top" :show-after="300">
-              <el-button 
-                class="tool-btn"
+            <el-tooltip content="AI定位：选择元素作为对话修改对象" placement="top" :show-after="300">
+              <el-button
+                class="tool-btn element-select-mode-trigger"
                 :class="{ active: isSelectingElement }"
                 @click="toggleElementSelector"
               >
@@ -212,8 +212,18 @@
               </el-button>
             </el-tooltip>
 
+            <el-tooltip content="复制：点击元素并在其后复制一份" placement="top" :show-after="300">
+              <el-button
+                class="tool-btn element-copy-mode-trigger"
+                :class="{ active: isCopyElementMode }"
+                @click="toggleCopyElementMode"
+              >
+                <el-icon><CopyDocument /></el-icon>
+              </el-button>
+            </el-tooltip>
+
             <el-tooltip
-              :content="isHeightResizeMode ? '退出高度调整' : '调整高度'"
+              :content="isHeightResizeMode ? '退出调高模式' : '调高'"
               placement="top"
               :show-after="400"
               :hide-after="0"
@@ -253,7 +263,7 @@ import { ref, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import {
   ChatDotRound, Setting, MagicStick,
   ArrowRight, User, InfoFilled, Promotion, Tickets,
-  Aim, Rank, PriceTag, Close, Delete, Check
+  Aim, Rank, CopyDocument, PriceTag, Close, Delete, Check
 } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useChatStore } from '@/stores/chat'
@@ -270,6 +280,7 @@ const messageListRef = ref<HTMLElement>()
 // 元素选择相关
 const isSelectingElement = ref(false)
 const isHeightResizeMode = ref(false)
+const isCopyElementMode = ref(false)
 const selectedElements = ref<Array<{info: string}>>([])  // 存储多个选中的元素
 
 // 接受/拒绝按钮显示状态
@@ -306,6 +317,20 @@ const handleSuggestion = (text: string) => {
 const toggleElementSelector = () => {
   isSelectingElement.value = !isSelectingElement.value
   
+  // 进入选择模式时，退出其他模式
+  if (isSelectingElement.value) {
+    isCopyElementMode.value = false
+    isHeightResizeMode.value = false
+
+    window.dispatchEvent(new CustomEvent('resume-element-copier', {
+      detail: { active: false }
+    }))
+
+    window.dispatchEvent(new CustomEvent('resume-height-resizer', {
+      detail: { active: false }
+    }))
+  }
+  
   // 发送事件到预览组件
   window.dispatchEvent(new CustomEvent('resume-element-selector', {
     detail: { 
@@ -325,14 +350,45 @@ const toggleHeightResizeMode = () => {
     detail: { active: isHeightResizeMode.value }
   }))
 
-  // 进入高度调整模式时，退出元素选择模式
+  // 进入高度调整模式时，退出其他模式
   if (isHeightResizeMode.value) {
     isSelectingElement.value = false
+    isCopyElementMode.value = false
+
     window.dispatchEvent(new CustomEvent('resume-element-selector', {
       detail: { active: false }
     }))
 
-    ElMessage.info('高度调整模式：点击简历中的模块后拖拽底部手柄')
+    window.dispatchEvent(new CustomEvent('resume-element-copier', {
+      detail: { active: false }
+    }))
+
+    ElMessage.info('调高模式：点击模块后，拖拽底部手柄调整高度')
+  }
+}
+
+// 切换复制元素模式
+const toggleCopyElementMode = () => {
+  isCopyElementMode.value = !isCopyElementMode.value
+
+  window.dispatchEvent(new CustomEvent('resume-element-copier', {
+    detail: { active: isCopyElementMode.value }
+  }))
+
+  // 进入复制模式时，关闭其他点选模式
+  if (isCopyElementMode.value) {
+    isSelectingElement.value = false
+    isHeightResizeMode.value = false
+
+    window.dispatchEvent(new CustomEvent('resume-element-selector', {
+      detail: { active: false }
+    }))
+
+    window.dispatchEvent(new CustomEvent('resume-height-resizer', {
+      detail: { active: false }
+    }))
+
+    ElMessage.info('复制模式：点击简历中的元素，将在原位置后复制一份')
   }
 }
 
@@ -517,6 +573,8 @@ onMounted(() => {
   window.addEventListener('resume-element-selector', handleSelectorStateChange as EventListener)
   // 监听高度调整模式状态变化（来自 ResumePreview.vue 的主动退出）
   window.addEventListener('resume-height-resizer-state-change', handleHeightResizerStateChange as EventListener)
+  // 监听复制模式状态变化（来自 ResumePreview.vue 的主动退出）
+  window.addEventListener('resume-element-copier-state-change', handleElementCopierStateChange as EventListener)
 })
 
 onUnmounted(() => {
@@ -524,6 +582,8 @@ onUnmounted(() => {
   window.removeEventListener('resume-element-selector', handleSelectorStateChange as EventListener)
   // 移除高度调整模式状态变化事件监听
   window.removeEventListener('resume-height-resizer-state-change', handleHeightResizerStateChange as EventListener)
+  // 移除复制模式状态变化事件监听
+  window.removeEventListener('resume-element-copier-state-change', handleElementCopierStateChange as EventListener)
 })
 
 // 处理选择模式状态变化
@@ -534,6 +594,11 @@ const handleSelectorStateChange = (event: CustomEvent) => {
 // 处理高度调整模式状态变化（来自 ResumePreview 的主动退出）
 const handleHeightResizerStateChange = (event: CustomEvent) => {
   isHeightResizeMode.value = Boolean(event.detail.active)
+}
+
+// 处理复制模式状态变化（来自 ResumePreview 的主动退出）
+const handleElementCopierStateChange = (event: CustomEvent) => {
+  isCopyElementMode.value = Boolean(event.detail.active)
 }
 
 // 清空聊天记录
