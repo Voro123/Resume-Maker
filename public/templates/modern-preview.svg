@@ -1,0 +1,35 @@
+<!-- 现代模板预览图 (SVG 格式) -->
+<svg xmlns="http://www.w3.org/2000/svg" width="300" height="400" viewBox="0 0 300 400">
+  <defs>
+    <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#667eea;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#764ba2;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <rect width="300" height="400" fill="#fff"/>
+  
+  <!-- 左侧边栏 -->
+  <rect x="0" y="0" width="100" height="400" fill="url(#grad1)"/>
+  <circle cx="50" cy="80" r="30" fill="#fff" opacity="0.9"/>
+  <text x="50" y="130" font-size="12" font-weight="bold" fill="#fff" text-anchor="middle">张三</text>
+  <text x="50" y="150" font-size="9" fill="#fff" text-anchor="middle" opacity="0.8">前端工程师</text>
+  
+  <!-- 右侧内容 -->
+  <text x="120" y="40" font-size="16" font-weight="bold" fill="#667eea">教育经历</text>
+  <rect x="120" y="50" width="160" height="2" fill="#667eea"/>
+  <text x="120" y="75" font-size="11" font-weight="bold" fill="#333">XX大学</text>
+  <text x="120" y="90" font-size="9" fill="#666">本科 | 计算机科学</text>
+  
+  <text x="120" y="130" font-size="16" font-weight="bold" fill="#667eea">工作经历</text>
+  <rect x="120" y="140" width="160" height="2" fill="#667eea"/>
+  <text x="120" y="165" font-size="11" font-weight="bold" fill="#333">XX公司</text>
+  <text x="120" y="180" font-size="9" fill="#666">前端工程师 | 2022-至今</text>
+  
+  <text x="120" y="220" font-size="16" font-weight="bold" fill="#667eea">技能</text>
+  <rect x="120" y="230" width="160" height="2" fill="#667eea"/>
+  <rect x="120" y="240" width="50" height="15" rx="3" fill="#667eea" opacity="0.2"/>
+  <text x="130" y="251" font-size="8" fill="#667eea">Vue3</text>
+  <rect x="180" y="240" width="50" height="15" rx="3" fill="#667eea" opacity="0.2"/>
+  <text x="190" y="251" font-size="8" fill="#667eea">React</text>
+</svg>

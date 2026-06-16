@@ -1,0 +1,1279 @@
+<template>
+  <div class="resume-preview" ref="previewRef">
+    <!-- 加载状态 -->
+    <div v-if="resumeStore.isGenerating" class="loading-state">
+      <el-icon class="is-loading" :size="50"><Loading /></el-icon>
+      
+      <!-- 当前状态 -->
+      <p class="loading-status">{{ resumeStore.currentStatus || 'AI 正在处理，请稍候...' }}</p>
+      
+      <!-- 详细说明 -->
+      <p v-if="resumeStore.currentDetail" class="loading-detail">{{ resumeStore.currentDetail }}</p>
+      
+      <!-- 简化的进度提示 -->
+      <p class="loading-tip">
+        <el-icon><InfoFilled /></el-icon>
+        AI 正在思考中，请耐心等待...
+      </p>
+      
+      <!-- AI 思考过程（可展开） -->
+      <div v-if="resumeStore.showReasoning && resumeStore.aiReasoning" class="reasoning-panel">
+        <div class="reasoning-header" @click="toggleReasoningExpanded">
+          <el-icon :class="{ 'is-rotate': isReasoningExpanded }"><ArrowDown /></el-icon>
+          <span>AI 思考过程</span>
+          <span class="reasoning-status">{{ isReasoningExpanded ? '点击收起' : '点击展开' }}</span>
+        </div>
+        <div v-if="isReasoningExpanded" class="reasoning-content">
+          <pre>{{ resumeStore.aiReasoning }}</pre>
+        </div>
+      </div>
+    </div>
+
+    <!-- 空状态 -->
+    <div v-else-if="!resumeStore.generatedHTML" class="empty-state">
+      <el-empty description="请在左侧选择提示词模板或输入自定义提示词，然后点击「生成简历」">
+        <template #image>
+          <el-icon :size="100" color="#c0c4cc"><Document /></el-icon>
+        </template>
+      </el-empty>
+    </div>
+
+    <!-- 简历预览 - 流式布局 + 分页线 -->
+    <div v-else class="resume-preview-wrapper">
+      <!-- 编辑提示 -->
+      <div class="edit-tip" v-if="showEditTip && !isSelectMode">
+        <el-icon><Edit /></el-icon>
+        <span>提示：点击简历中的任意文本即可直接编辑</span>
+        <el-button text size="small" @click="showEditTip = false">关闭</el-button>
+      </div>
+      
+      <!-- 元素选择模式提示 -->
+      <div class="select-tip" v-if="isSelectMode">
+        <el-icon><Aim /></el-icon>
+        <span>元素选择模式 - 点击选择/取消元素，Ctrl+点击多选</span>
+        <el-button text size="small" @click="cancelSelectMode">取消</el-button>
+        <el-button type="primary" size="small" @click="finishSelectMode">完成</el-button>
+      </div>
+      
+      <!-- 简历内容显示 -->
+      <div 
+        class="resume-content" 
+        v-html="resumeStore.generatedHTML" 
+        ref="resumeContentRef"
+        :class="{ 'select-mode': isSelectMode }"
+      ></div>
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import { 
+  Loading, 
+  Document, 
+  InfoFilled,
+  ArrowDown,
+  Edit,
+  Aim
+} from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
+import { useResumeStore } from '@/stores/resume'
+
+const resumeStore = useResumeStore()
+const previewRef = ref<HTMLElement>()
+const resumeContentRef = ref<HTMLElement>()
+const showEditTip = ref(true)
+
+// 元素选择模式
+const isSelectMode = ref(false)
+const hoveredElement = ref<HTMLElement | null>(null)
+const overlayElement = ref<HTMLElement | null>(null)  // 蒙层元素
+const selectedElements = ref<Array<{element: HTMLElement, info: string}>>([])  // 存储多个选中的元素
+
+// 创建多个蒙层（每个选中元素一个）
+const selectedOverlays = ref<HTMLElement[]>([])
+
+// 创建或获取蒙层元素（用于悬浮高亮）
+const getOrCreateOverlay = (): HTMLElement => {
+  if (overlayElement.value) {
+    return overlayElement.value
+  }
+  
+  const overlay = document.createElement('div')
+  overlay.className = 'element-select-overlay'
+  overlay.style.position = 'fixed'
+  overlay.style.backgroundColor = 'rgba(56, 132, 244, 0.12)'
+  overlay.style.outline = '2px solid rgba(56, 132, 244, 0.6)'
+  overlay.style.outlineOffset = '-1px'
+  overlay.style.pointerEvents = 'none'
+  overlay.style.zIndex = '9999'
+  overlay.style.transition = 'all 0.15s ease'
+  overlay.style.borderRadius = '2px'
+  
+  document.body.appendChild(overlay)
+  overlayElement.value = overlay
+  
+  return overlay
+}
+
+// 创建选中元素的蒙层（蓝色实心，用于标记已选中的元素）
+const createSelectedOverlay = (_element: HTMLElement, index: number): HTMLElement => {
+  const overlay = document.createElement('div')
+  overlay.className = 'element-selected-overlay'
+  overlay.setAttribute('data-index', index.toString())
+  overlay.style.position = 'fixed'
+  overlay.style.backgroundColor = 'rgba(56, 132, 244, 0.2)'  // 更明显的选中颜色
+  overlay.style.outline = '2px solid #3884f4'
+  overlay.style.outlineOffset = '-1px'
+  overlay.style.pointerEvents = 'none'
+  overlay.style.zIndex = '9998'  // 比悬浮蒙层低一点
+  overlay.style.borderRadius = '2px'
+  
+  // 添加序号标签
+  const label = document.createElement('div')
+  label.style.position = 'absolute'
+  label.style.top = '-20px'
+  label.style.left = '0'
+  label.style.background = '#3884f4'
+  label.style.color = 'white'
+  label.style.padding = '2px 6px'
+  label.style.borderRadius = '3px'
+  label.style.fontSize = '11px'
+  label.style.fontWeight = 'bold'
+  label.style.whiteSpace = 'nowrap'
+  label.textContent = (index + 1).toString()
+  overlay.appendChild(label)
+  
+  document.body.appendChild(overlay)
+  selectedOverlays.value.push(overlay)
+  
+  return overlay
+}
+
+// 更新所有选中元素的蒙层位置
+const updateSelectedOverlays = () => {
+  selectedElements.value.forEach((item, index) => {
+    let overlay = selectedOverlays.value[index]
+    if (!overlay) {
+      overlay = createSelectedOverlay(item.element, index)
+    }
+    
+    const rect = item.element.getBoundingClientRect()
+    overlay.style.top = `${rect.top}px`
+    overlay.style.left = `${rect.left}px`
+    overlay.style.width = `${rect.width}px`
+    overlay.style.height = `${rect.height}px`
+    overlay.style.display = 'block'
+  })
+}
+
+// 更新蒙层位置（跟随元素）
+const updateOverlayPosition = (target: HTMLElement) => {
+  const overlay = getOrCreateOverlay()
+  
+  // 获取元素的位置和尺寸（使用 getBoundingClientRect 获取视口相对位置）
+  const rect = target.getBoundingClientRect()
+  
+  // 设置蒙层位置和尺寸（使用 fixed 定位，直接用视口坐标）
+  overlay.style.top = `${rect.top}px`
+  overlay.style.left = `${rect.left}px`
+  overlay.style.width = `${rect.width}px`
+  overlay.style.height = `${rect.height}px`
+  overlay.style.display = 'block'
+}
+
+// 隐藏蒙层
+const hideOverlay = () => {
+  if (overlayElement.value) {
+    overlayElement.value.style.display = 'none'
+  }
+}
+
+// 思考过程面板展开/收起
+const isReasoningExpanded = ref(false)
+
+// 切换思考过程面板的展开/收起
+const toggleReasoningExpanded = () => {
+  isReasoningExpanded.value = !isReasoningExpanded.value
+}
+
+// 获取预览元素（供父组件调用）
+const getPreviewElement = () => {
+  return previewRef.value
+}
+
+// 暴露方法供父组件调用
+defineExpose({
+  getPreviewElement
+})
+
+// 监听生成的HTML变化
+watch(() => resumeStore.generatedHTML, () => {
+  nextTick(() => {
+    addPageBreaks()
+    setupContentEditableListeners()
+    if (!isSelectMode.value) {
+      setupSelectModeListeners()
+    }
+  })
+})
+
+// 设置元素选择模式监听
+const setupSelectModeListeners = () => {
+  if (!resumeContentRef.value) return
+  
+  const contentEl = resumeContentRef.value
+  
+  // 鼠标移动时高亮元素
+  contentEl.addEventListener('mousemove', handleMouseMove)
+  contentEl.addEventListener('mouseleave', handleMouseLeave)
+  
+  // 点击事件
+  contentEl.addEventListener('click', handleElementClick)
+}
+
+// 智能查找可选中的元素（向上遍历，找到合适的元素）
+const findSelectableElement = (el: HTMLElement): HTMLElement => {
+  // 如果元素就是内容容器本身，返回 null
+  if (el === resumeContentRef.value) return el
+  
+  // 向上遍历，找到有实际文本内容或合适的元素
+  let current: HTMLElement | null = el
+  
+  while (current && current !== resumeContentRef.value) {
+    const tagName = current.tagName.toLowerCase()
+    const textContent = current.textContent?.trim() || ''
+    const rect = current.getBoundingClientRect()
+    
+    // 如果是这些标签，直接返回（它们通常是用户想要选择的元素）
+    const directSelectTags = ['h1', 'h2', 'h3', 'h4', 'p', 'li', 'td', 'th', 'a', 'strong', 'em', 'span']
+    if (directSelectTags.includes(tagName)) {
+      // 但对于 span，如果有父元素有实际内容，优先选择父元素
+      if (tagName === 'span' && textContent.length < 20) {
+        const parent: HTMLElement | null = current.parentElement
+        if (parent && parent !== resumeContentRef.value) {
+          const parentText = parent.textContent?.trim() || ''
+          // 如果父元素文本不长，选择父元素
+          if (parentText.length < 100) {
+            current = parent
+            continue
+          }
+        }
+      }
+      return current
+    }
+    
+    
+    // 如果是 div，检查是否只是布局容器（没有自己独特的文本，只是包裹其他元素）
+    if (tagName === 'div') {
+      const hasDirectText = Array.from(current.childNodes).some(node => 
+        node.nodeType === Node.TEXT_NODE && node.textContent?.trim()
+      )
+      
+      // 如果 div 有直接文本内容，或者是合适的尺寸，返回它
+      if (hasDirectText || (rect.height < 200 && textContent.length > 0)) {
+        return current
+      }
+      
+      // 否则继续向上找
+      current = current.parentElement
+      continue
+    }
+    
+    // 其他情况，继续向上找
+    current = current.parentElement
+  }
+  
+  return el // 如果没找到合适的，返回原始元素
+}
+
+// 处理鼠标移动
+const handleMouseMove = (e: MouseEvent) => {
+  if (!isSelectMode.value) return
+  
+  const target = e.target as HTMLElement
+  if (target === resumeContentRef.value) {
+    hideOverlay()
+    return
+  }
+  
+  // 智能查找最合适的可选元素
+  const selectableElement = findSelectableElement(target)
+  
+  // 更新蒙层位置，覆盖在目标元素上
+  updateOverlayPosition(selectableElement)
+  hoveredElement.value = selectableElement
+  
+  // 阻止事件冒泡
+  e.stopPropagation()
+}
+
+// 处理鼠标离开
+const handleMouseLeave = () => {
+  if (!isSelectMode.value) return
+  hideOverlay()
+}
+
+// 处理元素点击
+const handleElementClick = (e: MouseEvent) => {
+  if (!isSelectMode.value) return
+  
+  e.preventDefault()
+  e.stopPropagation()
+  
+  const target = e.target as HTMLElement
+  
+  // 如果点击的是容器本身（没选中具体元素），则取消选择模式
+  if (target === resumeContentRef.value) {
+    exitSelectMode()
+    window.dispatchEvent(new CustomEvent('resume-element-selector', {
+      detail: { active: false }
+    }))
+    return
+  }
+  
+  // 智能查找最合适的可选元素（确保多次点击同一区域能选中同一个元素）
+  const selectableElement = findSelectableElement(target)
+  
+  // 获取元素信息
+  const elementInfo = getElementInfo(selectableElement)
+  
+  // 检查是否按住了 Ctrl 键（多选）
+  const isCtrlClick = e.ctrlKey || e.metaKey
+  
+  if (isCtrlClick) {
+    // Ctrl+点击：切换当前元素的选中状态
+    const existingIndex = selectedElements.value.findIndex(item => item.element === selectableElement)
+    
+    if (existingIndex >= 0) {
+      // 如果已经选中，取消选中
+      selectedElements.value.splice(existingIndex, 1)
+      // 移除对应的蒙层
+      if (selectedOverlays.value[existingIndex]) {
+        selectedOverlays.value[existingIndex].remove()
+        selectedOverlays.value.splice(existingIndex, 1)
+      }
+      // 重新编号剩余的蒙层
+      reindexSelectedOverlays()
+    } else {
+      // 如果未选中，添加到多选列表
+      selectedElements.value.push({ element: selectableElement, info: elementInfo })
+      // 创建蒙层
+      createSelectedOverlay(selectableElement, selectedElements.value.length - 1)
+    }
+  } else {
+    // 普通点击：只选中当前元素
+    clearAllSelectedOverlays()
+    selectedElements.value = [{ element: selectableElement, info: elementInfo }]
+    // 创建蒙层
+    createSelectedOverlay(selectableElement, 0)
+    
+    // 普通点击后自动退出选择模式（单选模式）
+    exitSelectMode()
+    
+    // 通知 ChatPanel 更新选择状态并退出选择模式
+    window.dispatchEvent(new CustomEvent('resume-element-selected', {
+      detail: { 
+        elementInfo: elementInfo,
+        allElements: [elementInfo],
+        isMultiSelect: false
+      }
+    }))
+    
+    // 通知 ChatPanel 退出选择模式
+    window.dispatchEvent(new CustomEvent('resume-element-selector', {
+      detail: { active: false }
+    }))
+    
+    ElMessage.success('已选中元素，请在输入框描述修改需求')
+    return  // 单选模式直接返回，不执行后面的发送逻辑
+  }
+  
+  // Ctrl+点击（多选模式）：发送选中事件，不自动退出
+  const allElementInfos = selectedElements.value.map(item => item.info)
+  window.dispatchEvent(new CustomEvent('resume-element-selected', {
+    detail: { 
+      elementInfo: elementInfo,
+      allElements: allElementInfos,
+      isMultiSelect: true
+    }
+  }))
+}
+
+// 重新编号选中蒙层的标签
+const reindexSelectedOverlays = () => {
+  selectedOverlays.value.forEach((overlay, index) => {
+    const label = overlay.querySelector('div')
+    if (label) {
+      label.textContent = (index + 1).toString()
+    }
+    overlay.setAttribute('data-index', index.toString())
+  })
+}
+
+// 清除所有选中蒙层
+const clearAllSelectedOverlays = () => {
+  selectedOverlays.value.forEach(overlay => {
+    overlay.remove()
+  })
+  selectedOverlays.value = []
+  selectedElements.value = []
+}
+
+// 获取元素信息（人类可读格式）
+const getElementInfo = (el: HTMLElement): string => {
+  const tagName = el.tagName.toLowerCase()
+  
+  // 获取元素类型的中文描述
+  const tagNames: Record<string, string> = {
+    'h1': '标题1',
+    'h2': '标题2',
+    'h3': '标题3',
+    'h4': '标题4',
+    'p': '段落',
+    'span': '文本',
+    'div': '区块',
+    'li': '列表项',
+    'td': '单元格',
+    'th': '表头',
+    'a': '链接',
+    'strong': '加粗文本',
+    'em': '斜体文本'
+  }
+  
+  const tagLabel = tagNames[tagName] || tagName
+  
+  // 获取元素的文本内容（截断）
+  let text = el.textContent?.trim() || ''
+  if (text.length > 30) {
+    text = text.substring(0, 30) + '...'
+  }
+  
+  // 如果有文本，显示为 "标题1: 工作经历"
+  // 如果没有文本，只显示元素类型
+  if (text) {
+    return `${tagLabel}: ${text}`
+  }
+  
+  return tagLabel
+}
+
+// 进入选择模式
+const enterSelectMode = () => {
+  isSelectMode.value = true
+  document.body.style.cursor = 'crosshair'
+  
+  // 添加全局样式
+  const style = document.createElement('style')
+  style.id = 'select-mode-style'
+  style.textContent = `
+    .resume-content.select-mode * {
+      cursor: pointer !important;
+    }
+  `
+  document.head.appendChild(style)
+  
+  // 监听滚动事件，更新蒙层位置
+  window.addEventListener('scroll', handleScroll, true)
+}
+
+// 处理滚动
+const handleScroll = () => {
+  if (!isSelectMode.value) return
+  
+  // 如果当前有悬浮元素，更新蒙层位置
+  if (hoveredElement.value) {
+    updateOverlayPosition(hoveredElement.value)
+  }
+  
+  // 同时更新所有选中元素的蒙层位置
+  updateSelectedOverlays()
+}
+
+// 退出选择模式
+const exitSelectMode = () => {
+  isSelectMode.value = false
+  document.body.style.cursor = ''
+  
+  // 移除滚动监听
+  window.removeEventListener('scroll', handleScroll, true)
+  
+  // 移除悬浮蒙层（保留选中蒙层）
+  if (overlayElement.value) {
+    overlayElement.value.remove()
+    overlayElement.value = null
+  }
+  
+  hoveredElement.value = null
+  
+  // 移除全局样式
+  const style = document.getElementById('select-mode-style')
+  if (style) {
+    style.remove()
+  }
+}
+
+// 高亮指定元素（用于悬浮在已选中标签上时）
+const highlightTargetElement = (elementInfo: string) => {
+  if (!resumeContentRef.value) return
+  
+  // 遍历所有元素，找到匹配的元素
+  const allElements = resumeContentRef.value.querySelectorAll('*')
+  allElements.forEach(el => {
+    const info = getElementInfo(el as HTMLElement)
+    if (info === elementInfo) {
+      // 使用蒙层覆盖元素
+      updateOverlayPosition(el as HTMLElement)
+      hoveredElement.value = el as HTMLElement
+    }
+  })
+}
+
+// 取消高亮
+const unhighlightElement = () => {
+  hideOverlay()
+  hoveredElement.value = null
+}
+
+// 取消选择模式
+const cancelSelectMode = () => {
+  exitSelectMode()
+  
+  // 清除所有选中的元素
+  clearAllSelectedOverlays()
+  
+  // 通知ChatPanel
+  window.dispatchEvent(new CustomEvent('resume-element-selector', {
+    detail: { active: false }
+  }))
+}
+
+// 完成选择模式（保留已选中的元素）
+const finishSelectMode = () => {
+  exitSelectMode()
+  
+  // 通知ChatPanel更新选择状态
+  window.dispatchEvent(new CustomEvent('resume-element-selector', {
+    detail: { active: false }
+  }))
+  
+  ElMessage.success(`已完成选择，共选中 ${selectedElements.value.length} 个元素`)
+}
+
+// 监听选择模式事件
+const handleSelectorEvent = (event: CustomEvent) => {
+  if (event.detail.active) {
+    enterSelectMode()
+    
+    // 恢复已有的选中元素（从 ChatPanel 传递过来）
+    const existingElements = event.detail.existingElements || []
+    if (existingElements.length > 0 && resumeStore.generatedHTML) {
+      // 等待 nextTick 确保 DOM 已更新
+      nextTick(() => {
+        restoreSelectedElements(existingElements)
+      })
+    }
+  } else {
+    exitSelectMode()
+  }
+}
+
+// 恢复选中的元素（从 ChatPanel 传递的 elementInfo 列表）
+const restoreSelectedElements = (elementInfos: string[]) => {
+  if (!resumeStore.generatedHTML) return
+  
+  // 先清空当前选择
+  clearAllSelectedOverlays()
+  selectedElements.value = []
+  
+  // 遍历所有可点击元素，找到匹配的并恢复选中状态
+  const tempDiv = document.createElement('div')
+  tempDiv.innerHTML = resumeStore.generatedHTML
+  
+  const allElements = document.querySelectorAll('.resume-content.select-mode *')
+  
+  elementInfos.forEach((info, index) => {
+    // 根据 elementInfo 找到对应的 DOM 元素
+    // elementInfo 格式：标签名: 文本内容
+    const match = info.match(/^([^:]+):\s*(.*)$/)
+    if (!match) return
+    
+    const [, tagLabel, text] = match
+    
+    allElements.forEach((el) => {
+      const elInfo = getElementInfo(el as HTMLElement)
+      if (elInfo === info) {
+        // 找到匹配的元素，恢复选中状态
+        selectedElements.value.push({
+          element: el as HTMLElement,
+          info: elInfo
+        })
+        createSelectedOverlay(el as HTMLElement, index)
+      }
+    })
+  })
+}
+
+// 初始化
+onMounted(() => {
+  resumeStore.loadFromLocalStorage()
+  if (resumeStore.generatedHTML) {
+    nextTick(() => {
+      addPageBreaks()
+      setupContentEditableListeners()
+    })
+  }
+  
+  // 监听元素选择器事件
+  window.addEventListener('resume-element-selector', handleSelectorEvent as EventListener)
+  
+  // 监听元素选中事件（用于多选时移除单个元素）
+  window.addEventListener('resume-element-remove', ((e: Event) => {
+    const customEvent = e as CustomEvent
+    const { index } = customEvent.detail
+    // 移除指定索引的选中元素
+    if (selectedElements.value[index]) {
+      selectedElements.value.splice(index, 1)
+      if (selectedOverlays.value[index]) {
+        selectedOverlays.value[index].remove()
+        selectedOverlays.value.splice(index, 1)
+      }
+      reindexSelectedOverlays()
+    }
+  }) as EventListener)
+  
+  // 监听清除所有选中元素的事件
+  window.addEventListener('resume-element-cleared', (() => {
+    clearAllSelectedOverlays()
+  }) as EventListener)
+  
+  // 监听高亮/取消高亮事件
+  window.addEventListener('resume-element-highlight', ((e: Event) => {
+    const customEvent = e as CustomEvent
+    highlightTargetElement(customEvent.detail.elementInfo)
+  }) as EventListener)
+  
+  window.addEventListener('resume-element-unhighlight', (() => {
+    unhighlightElement()
+  }) as EventListener)
+})
+
+onUnmounted(() => {
+  // 移除事件监听
+  window.removeEventListener('resume-element-selector', handleSelectorEvent as EventListener)
+  window.removeEventListener('resume-element-highlight', ((e: Event) => {
+    const customEvent = e as CustomEvent
+    highlightTargetElement(customEvent.detail.elementInfo)
+  }) as EventListener)
+  window.removeEventListener('resume-element-unhighlight', (() => {
+    unhighlightElement()
+  }) as EventListener)
+  
+  // 移除滚动监听
+  window.removeEventListener('scroll', handleScroll, true)
+  
+  // 确保移除所有蒙层
+  clearAllSelectedOverlays()
+  if (overlayElement.value) {
+    overlayElement.value.remove()
+    overlayElement.value = null
+  }
+  
+  // 确保退出选择模式
+  if (isSelectMode.value) {
+    exitSelectMode()
+  }
+})
+
+// 设置可编辑元素的监听器
+const setupContentEditableListeners = () => {
+  if (!resumeContentRef.value) return
+  
+  // 使用事件委托监听输入事件
+  resumeContentRef.value.addEventListener('input', (e) => {
+    const target = e.target as HTMLElement
+    if (target.hasAttribute('contenteditable')) {
+      // 延迟保存，避免频繁更新
+      debounceSaveHTML()
+    }
+  })
+  
+  // 监听焦点事件，显示编辑状态
+  resumeContentRef.value.addEventListener('focusin', (e) => {
+    const target = e.target as HTMLElement
+    if (target.hasAttribute('contenteditable')) {
+      target.classList.add('editing')
+    }
+  })
+  
+  resumeContentRef.value.addEventListener('focusout', (e) => {
+    const target = e.target as HTMLElement
+    if (target.hasAttribute('contenteditable')) {
+      target.classList.remove('editing')
+    }
+  })
+}
+
+// 防抖保存HTML
+let saveTimer: number | null = null
+const debounceSaveHTML = () => {
+  if (saveTimer) {
+    clearTimeout(saveTimer)
+  }
+  
+  saveTimer = window.setTimeout(() => {
+    saveEditedHTML()
+  }, 500) // 500ms 防抖
+}
+
+// 保存编辑后的HTML
+const saveEditedHTML = () => {
+  if (!resumeContentRef.value) return
+  
+  // 获取编辑后的HTML
+  const editedHTML = resumeContentRef.value.innerHTML
+  
+  // 更新store
+  resumeStore.updateGeneratedHTML(editedHTML)
+  
+  console.log('简历内容已自动保存')
+}
+
+// 添加分页线标记
+const addPageBreaks = () => {
+  nextTick(() => {
+    const container = document.querySelector('.resume-content .resume-container') as HTMLElement
+    if (!container) return
+    
+    // 移除已有的分页线
+    container.querySelectorAll('.page-break-line').forEach(el => el.remove())
+    
+    const containerHeight = container.scrollHeight
+    const A4_HEIGHT = 1123 // A4高度（96dpi）
+    const A4_PADDING = 57 // 页边距
+    const A4_CONTENT_HEIGHT = A4_HEIGHT - A4_PADDING * 2 // 1009px
+    
+    if (containerHeight > A4_CONTENT_HEIGHT) {
+      // 需要分页，计算准确的分页位置
+      // 分页线应该标示"第一页结束"的位置，即内容区域的底部
+      
+      // 创建分页线元素
+      const pageBreakLine = document.createElement('div')
+      pageBreakLine.className = 'page-break-line'
+      pageBreakLine.style.position = 'absolute'
+      pageBreakLine.style.top = `${A4_PADDING + A4_CONTENT_HEIGHT}px` // 57 + 1009 = 1066px
+      pageBreakLine.style.left = '0'
+      pageBreakLine.style.right = '0'
+      pageBreakLine.style.height = '3px'
+      pageBreakLine.style.zIndex = '100'
+      pageBreakLine.style.pointerEvents = 'none'
+      pageBreakLine.innerHTML = `
+        <div style="position: relative; width: 100%; height: 100%;">
+          <div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: repeating-linear-gradient(90deg, #f56c6c 0px, #f56c6c 8px, transparent 8px, transparent 12px); box-shadow: 0 1px 3px rgba(245, 108, 108, 0.3);"></div>
+          <span style="position: absolute; right: 20px; top: 8px; background: linear-gradient(135deg, #f56c6c, #f78989); color: white; padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: 500; white-space: nowrap; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">第 1 页结束 - 以下内容将在第 2 页显示</span>
+        </div>
+      `
+      
+      // 将容器设置为相对定位（如果还没有）
+      if (getComputedStyle(container).position === 'static') {
+        container.style.position = 'relative'
+      }
+      
+      // 插入分页线
+      container.appendChild(pageBreakLine)
+      
+      // 如果内容超过两页，添加更多分页线
+      const totalPages = Math.ceil((containerHeight - A4_PADDING) / A4_HEIGHT)
+      if (totalPages > 2) {
+        for (let i = 2; i < totalPages; i++) {
+          const additionalBreakLine = document.createElement('div')
+          additionalBreakLine.className = 'page-break-line'
+          additionalBreakLine.style.position = 'absolute'
+          additionalBreakLine.style.top = `${A4_PADDING + A4_CONTENT_HEIGHT + (A4_HEIGHT * (i - 1))}px`
+          additionalBreakLine.style.left = '0'
+          additionalBreakLine.style.right = '0'
+          additionalBreakLine.style.height = '3px'
+          additionalBreakLine.style.zIndex = '100'
+          additionalBreakLine.style.pointerEvents = 'none'
+          additionalBreakLine.innerHTML = `
+            <div style="position: relative; width: 100%; height: 100%;">
+              <div style="position: absolute; top: 0; left: 0; right: 0; height: 3px; background: repeating-linear-gradient(90deg, #f56c6c 0px, #f56c6c 8px, transparent 8px, transparent 12px); box-shadow: 0 1px 3px rgba(245, 108, 108, 0.3);"></div>
+              <span style="position: absolute; right: 20px; top: 8px; background: linear-gradient(135deg, #f56c6c, #f78989); color: white; padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: 500; white-space: nowrap; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">第 ${i} 页结束 - 以下内容将在第 ${i + 1} 页显示</span>
+            </div>
+          `
+          container.appendChild(additionalBreakLine)
+        }
+      }
+    }
+  })
+}
+</script>
+
+<style scoped lang="scss">
+// ==================== 设计令牌 (Design Tokens) ====================
+$color-primary: #409eff;
+$color-primary-light: #ecf5ff;
+$color-success: #67c23a;
+$color-warning: #e6a23c;
+$color-danger: #f56c6c;
+$color-info: #909399;
+
+$color-bg-main: #f0f2f5;
+$color-bg-card: #ffffff;
+$color-text-primary: #303133;
+$color-text-regular: #606266;
+$color-text-secondary: #909399;
+$color-border: #dcdfe6;
+
+$shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.06);
+$shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
+$shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
+$shadow-xl: 0 12px 36px rgba(0, 0, 0, 0.15);
+
+$radius-sm: 4px;
+$radius-md: 8px;
+$radius-lg: 12px;
+
+$transition-fast: 0.2s ease;
+$transition-normal: 0.3s ease;
+
+// ==================== 主容器 ====================
+.resume-preview {
+  width: 100%;
+  height: 100%;  // 改为 100%，填充父容器
+  background: $color-bg-main;
+  overflow-y: auto;
+  padding: 24px;
+  
+  // 自定义滚动条
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+  
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  
+  &::-webkit-scrollbar-thumb {
+    background: #c0c4cc;
+    border-radius: 3px;
+    
+    &:hover {
+      background: #909399;
+    }
+  }
+}
+
+// ==================== 简历预览包装器 ====================
+.resume-preview-wrapper {
+  max-width: 900px;
+  margin: 0 auto;
+  animation: fadeInUp 0.5s ease;
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+// ==================== 简历内容区域 ====================
+.resume-content {
+  background: white;
+  // 默认有圆角和阴影（编辑模式）
+  border-radius: $radius-md;
+  box-shadow: $shadow-lg;
+  overflow: visible;
+  position: relative;
+  
+  // 导出 PDF 模式：去除圆角、阴影和内边距
+  .exporting-pdf & {
+    border-radius: 0;
+    box-shadow: none;
+    padding: 0;
+  }
+  
+  // 深度选择器：修改简历内容的样式
+  :deep(.resume-container) {
+    width: 794px;
+    min-height: 1123px;
+    background: white;
+    box-sizing: border-box;
+    position: relative;
+    box-shadow: $shadow-md;
+    
+    // 分页线标记（由JavaScript动态创建）
+    // 使用内联样式，这里只提供基础样式
+  }
+}
+
+// ==================== 加载状态 ====================
+.loading-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 500px;
+  color: $color-text-secondary;
+  padding: 60px 20px;
+  
+  .el-icon {
+    color: $color-primary;
+    animation: rotate 1.5s linear infinite;
+  }
+  
+  @keyframes rotate {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+  
+  .loading-status {
+    font-size: 22px;
+    font-weight: 600;
+    color: $color-text-primary;
+    margin-top: 30px;
+    text-align: center;
+    animation: pulse 2s ease-in-out infinite;
+  }
+  
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+  }
+  
+  .loading-detail {
+    font-size: 15px;
+    color: $color-text-regular;
+    margin-top: 16px;
+    text-align: center;
+    max-width: 600px;
+    line-height: 1.6;
+  }
+  
+  .loading-tip {
+    font-size: 14px;
+    color: $color-text-secondary;
+    margin-top: 40px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 24px;
+    background: $color-primary-light;
+    border-radius: 30px;
+    border: 1px solid rgba($color-primary, 0.2);
+    
+    .el-icon {
+      animation: none;
+      color: $color-primary;
+    }
+  }
+}
+
+// ==================== 空状态 ====================
+.empty-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 500px;
+  
+  :deep(.el-empty__description) {
+    color: $color-text-secondary;
+    font-size: 15px;
+    margin-top: 20px;
+  }
+  
+  :deep(.el-icon) {
+    color: #c0c4cc;
+    animation: float 3s ease-in-out infinite;
+  }
+  
+  @keyframes float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-10px); }
+  }
+}
+
+// ==================== AI 思考过程面板 ====================
+.reasoning-panel {
+  width: 90%;
+  max-width: 700px;
+  margin-top: 40px;
+  border: 1px solid $color-border;
+  border-radius: $radius-lg;
+  overflow: hidden;
+  background: $color-bg-card;
+  box-shadow: $shadow-md;
+  animation: slideUp 0.4s ease;
+  
+  @keyframes slideUp {
+    from {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  
+  .reasoning-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 20px;
+    cursor: pointer;
+    font-size: 15px;
+    font-weight: 600;
+    color: $color-text-primary;
+    background: linear-gradient(to right, #f5f7fa, $color-bg-card);
+    transition: all $transition-normal;
+    
+    &:hover {
+      background: linear-gradient(to right, #ebeef5, #f5f7fa);
+      padding-left: 24px;
+    }
+    
+    .el-icon {
+      transition: transform $transition-normal;
+      color: $color-primary;
+      font-size: 16px;
+      
+      &.is-rotate {
+        transform: rotate(180deg);
+      }
+    }
+    
+    .reasoning-status {
+      margin-left: auto;
+      font-size: 13px;
+      font-weight: normal;
+      color: $color-text-secondary;
+      padding: 4px 12px;
+      background: $color-primary-light;
+      border-radius: 20px;
+    }
+  }
+  
+  .reasoning-content {
+    max-height: 400px;
+    overflow-y: auto;
+    padding: 20px;
+    background: #fafbfc;
+    border-top: 1px solid $color-border;
+    
+    // 自定义滚动条
+    &::-webkit-scrollbar {
+      width: 6px;
+    }
+    
+    &::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    
+    &::-webkit-scrollbar-thumb {
+      background: #c0c4cc;
+      border-radius: 3px;
+      
+      &:hover {
+        background: #909399;
+      }
+    }
+    
+    pre {
+      margin: 0;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      font-size: 14px;
+      line-height: 1.8;
+      color: $color-text-regular;
+      font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', 'Monaco', monospace;
+      background: $color-bg-card;
+      padding: 16px;
+      border-radius: $radius-sm;
+      border: 1px solid $color-border;
+    }
+  }
+}
+
+// ==================== 编辑提示 ====================
+.edit-tip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  margin-bottom: 16px;
+  background: linear-gradient(135deg, #e0f2fe, #f0f9ff);
+  border: 1px solid #bae6fd;
+  border-radius: $radius-md;
+  color: #0369a1;
+  font-size: 14px;
+  animation: slideDown 0.4s ease;
+  
+  .el-icon {
+    font-size: 16px;
+    color: #0ea5e9;
+  }
+  
+  span {
+    flex: 1;
+  }
+  
+  .el-button {
+    color: #0369a1;
+    
+    &:hover {
+      color: #075985;
+    }
+  }
+}
+
+// ==================== 元素选择模式提示 ====================
+.select-tip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  margin-bottom: 16px;
+  background: linear-gradient(135deg, #f0f9ff, #e0f2fe);
+  border: 1px solid #409eff;
+  border-radius: $radius-md;
+  color: #0369a1;
+  font-size: 14px;
+  animation: slideDown 0.4s ease;
+  
+  .el-icon {
+    font-size: 18px;
+    color: #409eff;
+    animation: pulse-icon 1.5s infinite;
+  }
+  
+  @keyframes pulse-icon {
+    0%, 100% { 
+      transform: scale(1);
+      opacity: 1;
+    }
+    50% { 
+      transform: scale(1.1);
+      opacity: 0.8;
+    }
+  }
+  
+  
+  
+  span {
+    flex: 1;
+    font-weight: 500;
+  }
+  
+  .el-button {
+    color: #0369a1;
+    
+    &:hover {
+      color: #ef4444;
+    }
+  }
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+// ==================== 可编辑元素样式（全局，因为内容是动态插入的） ====================
+:deep([contenteditable="true"]) {
+  outline: none;
+  transition: all 0.2s ease;
+  border-radius: 2px;
+  padding: 1px 2px;
+  margin: -1px -2px;
+  position: relative;
+  
+  &:hover {
+    background-color: rgba(59, 130, 246, 0.08) !important;
+    cursor: text;
+    box-shadow: inset 0 0 0 1px rgba(59, 130, 246, 0.2);
+  }
+  
+  &:focus {
+    background-color: rgba(59, 130, 246, 0.12) !important;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3) !important;
+    z-index: 10;
+  }
+  
+  &.editing {
+    background-color: rgba(59, 130, 246, 0.12) !important;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3) !important;
+  }
+}
+
+// ==================== 响应式设计 ====================
+@media (max-width: 1200px) {
+  .resume-preview-wrapper {
+    max-width: 100%;
+    padding: 0 20px;
+  }
+}
+
+@media (max-width: 768px) {
+  .resume-preview {
+    padding: 12px;
+  }
+  
+  .resume-content {
+    :deep(.resume-container) {
+      width: 100% !important;
+      min-height: auto !important;
+    }
+  }
+}
+</style>
+
+<style lang="scss">
+// 打印样式（非 scoped，确保打印时生效）
+@media print {
+  // 简历容器样式
+  .resume-container {
+    box-shadow: none !important;
+    margin: 0 !important;
+    width: 794px !important;
+    border-radius: 0 !important;
+  }
+  
+  // 隐藏分页线
+  .page-break-line {
+    display: none !important;
+  }
+  
+  // 隐藏主容器的阴影和圆角
+  .resume-content {
+    box-shadow: none !important;
+    background: white !important;
+    border-radius: 0 !important;
+  }
+  
+  // 隐藏主容器的背景和边距
+  .resume-preview {
+    background: white !important;
+    padding: 0 !important;
+  }
+  
+  // 隐藏简历预览包装器的阴影和边距
+  .resume-preview-wrapper {
+    max-width: 100% !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+  }
+}
+</style>

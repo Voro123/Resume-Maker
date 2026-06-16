@@ -1,0 +1,42 @@
+<!-- 经典模板预览图 (SVG 格式) -->
+<svg xmlns="http://www.w3.org/2000/svg" width="300" height="400" viewBox="0 0 300 400">
+  <rect width="300" height="400" fill="#fff"/>
+  
+  <!-- 头部 -->
+  <rect x="0" y="0" width="300" height="80" fill="#f5f5f5"/>
+  <circle cx="50" cy="40" r="25" fill="#ddd"/>
+  <text x="90" y="35" font-size="18" font-weight="bold" fill="#333">张三</text>
+  <text x="90" y="55" font-size="12" fill="#666">前端工程师</text>
+  
+  <!-- 联系方式 -->
+  <text x="20" y="100" font-size="10" fill="#999">📞 138-0000-0000</text>
+  <text x="150" y="100" font-size="10" fill="#999">✉️ zhangsan@email.com</text>
+  
+  <!-- 分割线 -->
+  <line x1="20" y1="115" x2="280" y2="115" stroke="#333" stroke-width="2"/>
+  
+  <!-- 教育经历 -->
+  <text x="20" y="140" font-size="14" font-weight="bold" fill="#333">教育经历</text>
+  <line x1="20" y1="145" x2="280" y2="145" stroke="#333" stroke-width="1"/>
+  <text x="20" y="165" font-size="12" font-weight="bold" fill="#333">XX大学</text>
+  <text x="20" y="182" font-size="10" fill="#666">计算机科学与技术 | 本科</text>
+  <text x="200" y="165" font-size="10" fill="#999">2018-2022</text>
+  
+  <!-- 工作经历 -->
+  <text x="20" y="210" font-size="14" font-weight="bold" fill="#333">工作经历</text>
+  <line x1="20" y1="215" x2="280" y2="215" stroke="#333" stroke-width="1"/>
+  <text x="20" y="235" font-size="12" font-weight="bold" fill="#333">XX公司</text>
+  <text x="20" y="252" font-size="10" fill="#666">前端工程师</text>
+  <text x="200" y="235" font-size="10" fill="#999">2022-至今</text>
+  <text x="20" y="270" font-size="9" fill="#999">负责公司核心产品的前端开发...</text>
+  
+  <!-- 技能 -->
+  <text x="20" y="295" font-size="14" font-weight="bold" fill="#333">技能特长</text>
+  <line x1="20" y1="300" x2="280" y2="300" stroke="#333" stroke-width="1"/>
+  <rect x="20" y="310" width="60" height="20" rx="5" fill="#e8e8e8"/>
+  <text x="30" y="324" font-size="9" fill="#333">Vue3</text>
+  <rect x="90" y="310" width="60" height="20" rx="5" fill="#e8e8e8"/>
+  <text x="100" y="324" font-size="9" fill="#333">TypeScript</text>
+  <rect x="160" y="310" width="60" height="20" rx="5" fill="#e8e8e8"/>
+  <text x="170" y="324" font-size="9" fill="#333">React</text>
+</svg>

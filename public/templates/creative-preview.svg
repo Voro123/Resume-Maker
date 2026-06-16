@@ -1,0 +1,40 @@
+<!-- 创意模板预览图 (SVG 格式) -->
+<svg xmlns="http://www.w3.org/2000/svg" width="300" height="400" viewBox="0 0 300 400">
+  <rect width="300" height="400" fill="#fff"/>
+  
+  <!-- 顶部装饰 -->
+  <rect x="0" y="0" width="300" height="10" fill="#ff6b6b"/>
+  <rect x="0" y="10" width="300" height="60" fill="#ff6b6b" opacity="0.1"/>
+  
+  <!-- 姓名区域 -->
+  <text x="150" y="45" font-size="24" font-weight="bold" fill="#ff6b6b" text-anchor="middle">张三</text>
+  <text x="150" y="65" font-size="12" fill="#666" text-anchor="middle">UI/UX 设计师</text>
+  
+  <!-- 装饰线条 -->
+  <circle cx="30" cy="90" r="5" fill="#ff6b6b" opacity="0.5"/>
+  <circle cx="60" cy="90" r="5" fill="#4ecdc4" opacity="0.5"/>
+  <circle cx="90" cy="90" r="5" fill="#ffd93d" opacity="0.5"/>
+  <line x1="110" y1="90" x2="280" y2="90" stroke="#ddd" stroke-width="2"/>
+  
+  <!-- 内容区域 -->
+  <text x="30" y="120" font-size="14" font-weight="bold" fill="#ff6b6b">✎ 关于我</text>
+  <rect x="30" y="125" width="240" height="1" fill="#ff6b6b" opacity="0.3"/>
+  <text x="30" y="145" font-size="9" fill="#666">热爱设计，专注于用户体验...</text>
+  
+  <text x="30" y="180" font-size="14" font-weight="bold" fill="#4ecdc4">⚡ 工作经验</text>
+  <rect x="30" y="185" width="240" height="1" fill="#4ecdc4" opacity="0.3"/>
+  <text x="30" y="205" font-size="11" font-weight="bold" fill="#333">XX设计公司</text>
+  <text x="30" y="220" font-size="9" fill="#666">资深UI设计师 | 2020-至今</text>
+  
+  <text x="30" y="255" font-size="14" font-weight="bold" fill="#ffd93d">✦ 技能</text>
+  <rect x="30" y="260" width="240" height="1" fill="#ffd93d" opacity="0.3"/>
+  <rect x="30" y="270" width="45" height="18" rx="9" fill="#ff6b6b" opacity="0.2"/>
+  <text x="38" y="283" font-size="8" fill="#ff6b6b">Photoshop</text>
+  <rect x="85" y="270" width="45" height="18" rx="9" fill="#4ecdc4" opacity="0.2"/>
+  <text x="93" y="283" font-size="8" fill="#4ecdc4">Figma</text>
+  <rect x="140" y="270" width="45" height="18" rx="9" fill="#ffd93d" opacity="0.2"/>
+  <text x="148" y="283" font-size="8" fill="#ffd93d">Sketch</text>
+  
+  <!-- 底部装饰 -->
+  <rect x="0" y="390" width="300" height="10" fill="#ff6b6b"/>
+</svg>
