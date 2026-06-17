@@ -116,7 +116,7 @@
               type="info"
               :closable="false"
               show-icon
-              title="项目经历支持填写多个项目。项目名称、时间、角色、技术栈等会独立保存，生成简历时会更稳定。"
+              title="默认通过 AI 问答挖掘项目经历；需要精修字段时，可以切换到结构化填写。"
             />
 
             <div class="project-toolbar">
@@ -147,11 +147,33 @@
             </div>
 
             <el-radio-group v-model="projectMode" class="mode-switch">
-              <el-radio-button label="manual">结构化填写</el-radio-button>
               <el-radio-button label="qa">AI 问答挖掘</el-radio-button>
+              <el-radio-button label="manual">结构化填写</el-radio-button>
             </el-radio-group>
 
-            <div v-if="projectMode === 'manual'" class="manual-panel">
+            <div v-if="projectMode === 'qa'" class="qa-panel">
+              <div class="question-card">
+                <div class="question-index">
+                  当前项目：{{ currentProject.name || currentProjectLabel }} · 问题 {{ currentQuestionIndex + 1 }} / {{ projectQuestions.length }}
+                </div>
+                <h3>{{ currentQuestion.question }}</h3>
+                <p>{{ currentQuestion.helper }}</p>
+                <el-input
+                  v-model="qaAnswers[currentQuestionIndex]"
+                  type="textarea"
+                  :rows="5"
+                  :placeholder="currentQuestion.placeholder"
+                />
+              </div>
+
+              <div class="qa-actions">
+                <el-button :disabled="currentQuestionIndex === 0" @click="currentQuestionIndex--">上一题</el-button>
+                <el-button v-if="currentQuestionIndex < projectQuestions.length - 1" type="primary" @click="currentQuestionIndex++">下一题</el-button>
+                <el-button v-else type="success" @click="buildProjectFromQa">生成当前项目草稿</el-button>
+              </div>
+            </div>
+
+            <div v-else class="manual-panel">
               <el-form label-position="top">
                 <div class="form-grid">
                   <el-form-item label="项目名称">
@@ -204,26 +226,6 @@
                   />
                 </el-form-item>
               </el-form>
-            </div>
-
-            <div v-else class="qa-panel">
-              <div class="question-card">
-                <div class="question-index">当前项目：{{ currentProject.name || currentProjectLabel }} · 问题 {{ currentQuestionIndex + 1 }} / {{ projectQuestions.length }}</div>
-                <h3>{{ currentQuestion.question }}</h3>
-                <p>{{ currentQuestion.helper }}</p>
-                <el-input
-                  v-model="qaAnswers[currentQuestionIndex]"
-                  type="textarea"
-                  :rows="5"
-                  :placeholder="currentQuestion.placeholder"
-                />
-              </div>
-
-              <div class="qa-actions">
-                <el-button :disabled="currentQuestionIndex === 0" @click="currentQuestionIndex--">上一题</el-button>
-                <el-button v-if="currentQuestionIndex < projectQuestions.length - 1" type="primary" @click="currentQuestionIndex++">下一题</el-button>
-                <el-button v-else type="success" @click="buildProjectFromQa">生成当前项目草稿</el-button>
-              </div>
             </div>
 
             <div class="polish-actions">
@@ -305,7 +307,7 @@ const API_CONFIG_KEY = 'chat-api-config'
 const visible = ref(false)
 const activeSettingsTab = ref<'api' | 'profile'>('profile')
 const activeStep = ref(0)
-const projectMode = ref<'manual' | 'qa'>('manual')
+const projectMode = ref<'qa' | 'manual'>('qa')
 const currentQuestionIndex = ref(0)
 const qaAnswers = ref<string[]>([])
 const isPolishing = ref(false)
@@ -423,6 +425,11 @@ const handleResetApiConfig = () => {
   ElMessage.info('已清空 API 配置')
 }
 
+const resetQaState = () => {
+  currentQuestionIndex.value = 0
+  qaAnswers.value = []
+}
+
 const ensureProject = () => {
   if (!projects.value.length) {
     const project = onboardingStore.createEmptyProject()
@@ -431,16 +438,11 @@ const ensureProject = () => {
   }
 }
 
-const resetQaState = () => {
-  currentQuestionIndex.value = 0
-  qaAnswers.value = []
-}
-
 const restoreProfile = () => {
   Object.assign(basicInfo, onboardingStore.createEmptyBasicInfo())
   projects.value = [onboardingStore.createEmptyProject()]
   activeProjectId.value = projects.value[0].id
-  projectMode.value = 'manual'
+  projectMode.value = 'qa'
   resetQaState()
 
   if (!onboardingStore.profile) return
@@ -466,16 +468,17 @@ const addProject = () => {
   const project = onboardingStore.createEmptyProject()
   projects.value.push(project)
   activeProjectId.value = project.id
-  projectMode.value = 'manual'
+  projectMode.value = 'qa'
   resetQaState()
 }
 
 const removeCurrentProject = () => {
   if (projects.value.length <= 1) return
 
+  const removeIndex = currentProjectIndex.value
   const nextProjects = projects.value.filter((project) => project.id !== activeProjectId.value)
   projects.value = nextProjects
-  activeProjectId.value = nextProjects[Math.min(currentProjectIndex.value, nextProjects.length - 1)].id
+  activeProjectId.value = nextProjects[Math.min(removeIndex, nextProjects.length - 1)].id
   resetQaState()
 }
 
@@ -503,7 +506,7 @@ const buildProjectFromQa = () => {
   currentProject.value.source = 'qa'
   projectMode.value = 'manual'
   resetQaState()
-  ElMessage.success('已根据问答补充当前项目，可继续编辑或使用 AI 优化')
+  ElMessage.success('已根据问答补充当前项目，可继续切换到结构化填写精修')
 }
 
 const formatProjectsAsText = () => {
@@ -587,6 +590,7 @@ const handlePolishProject = async () => {
     if (data.projects?.length) {
       projects.value = data.projects.map(normalizeAiProject)
       activeProjectId.value = projects.value[0].id
+      projectMode.value = 'manual'
       ElMessage.success('AI 已优化全部项目经历')
     } else {
       ElMessage.warning('AI 未返回项目经历，请补充更多项目信息后重试')
