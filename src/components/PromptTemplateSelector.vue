@@ -2,62 +2,25 @@
   <div class="prompt-template-selector">
     <!-- 上部区域：弹性填充 -->
     <div class="selector-main">
-      <!-- API 配置（最高优先级） -->
-      <div v-if="!isConfigured" class="api-config-section">
-        <el-alert type="warning" :closable="false" show-icon title="请先配置 API" style="margin-bottom: 15px" />
-        
-        <div class="config-form">
-          <el-form label-position="top" size="default">
-            <el-form-item label="API Key">
-              <el-input 
-                v-model="configForm.apiKey" 
-                type="password" 
-                placeholder="请输入 MiniMax API Key"
-                show-password
-                clearable
-              />
-            </el-form-item>
-            
-            <el-form-item label="模型选择">
-              <el-select v-model="configForm.model" style="width: 100%">
-                <el-option label="MiniMax-M3" value="MiniMax-M3" />
-                <!-- 后续可在此添加更多模型 -->
-              </el-select>
-            </el-form-item>
-            
-            <el-form-item>
-              <el-button 
-                type="primary" 
-                @click="handleSaveConfig"
-                :disabled="!configForm.apiKey"
-                style="width: 100%"
-              >
-                <el-icon><Check /></el-icon>
-                保存配置
-              </el-button>
-            </el-form-item>
-          </el-form>
-        </div>
-        
-        <el-divider />
+      <div class="settings-status">
+        <el-tag :type="isConfigured ? 'success' : 'warning'" size="small">
+          <el-icon><Check v-if="isConfigured" /><Warning v-else /></el-icon>
+          {{ isConfigured ? `API 已配置 (${configForm.model})` : 'API 未配置' }}
+        </el-tag>
+        <el-tooltip content="项目设置" placement="top">
+          <el-button circle size="small" @click="handleOpenSettings(isConfigured ? 'profile' : 'api')" aria-label="项目设置">
+            <el-icon><Setting /></el-icon>
+          </el-button>
+        </el-tooltip>
       </div>
 
-      <!-- 已配置状态 -->
-      <div v-else class="config-status">
-        <el-tag type="success" size="small">
-          <el-icon><Check /></el-icon>
-          API 已配置 ({{ configForm.model }})
-        </el-tag>
-        <div class="config-actions">
-          <el-tooltip :content="onboardingStore.hasProfile ? '编辑候选人信息' : '填写候选人信息'" placement="top">
-            <el-button circle size="small" @click="handleOpenOnboarding" aria-label="编辑候选人信息">
-              <el-icon><Setting /></el-icon>
-            </el-button>
-          </el-tooltip>
-          <el-button type="text" size="small" @click="handleResetConfig">修改配置</el-button>
-        </div>
-        
-        <el-divider style="margin: 10px 0" />
+      <div v-if="!isConfigured" class="api-empty-section">
+        <el-empty description="请先配置 API 后再生成简历" :image-size="72">
+          <el-button type="primary" @click="handleOpenSettings('api')">
+            <el-icon><Setting /></el-icon>
+            打开设置
+          </el-button>
+        </el-empty>
       </div>
 
       <!-- 分类筛选（仅在已配置时显示） -->
@@ -156,8 +119,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
-import { MagicStick, Check, InfoFilled, Setting } from '@element-plus/icons-vue'
+import { ref, computed, onBeforeUnmount, onMounted } from 'vue'
+import { MagicStick, Check, InfoFilled, Setting, Warning } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { promptTemplates, getCategories } from '@/config/promptTemplates'
 import { useResumeStore } from '@/stores/resume'
@@ -166,6 +129,7 @@ import type { PromptTemplate } from '@/types/resume'
 
 const resumeStore = useResumeStore()
 const onboardingStore = useOnboardingStore()
+const API_CONFIG_KEY = 'chat-api-config'
 
 // API 配置表单
 const configForm = ref({
@@ -216,34 +180,34 @@ const handleSelect = (template: PromptTemplate) => {
   }
 }
 
-// 保存 API 配置
-const handleSaveConfig = () => {
-  if (!configForm.value.apiKey) {
-    ElMessage.warning('请输入 API Key')
-    return
-  }
-
-  // 保存到 localStorage
-  localStorage.setItem('chat-api-config', JSON.stringify(configForm.value))
-  isConfigured.value = true
-  
-  ElMessage.success('API 配置成功！')
-}
-
-// 重置配置
-const handleResetConfig = () => {
+const loadApiConfig = () => {
+  const savedConfig = localStorage.getItem(API_CONFIG_KEY)
   configForm.value = {
     apiKey: '',
     baseURL: 'https://api.minimaxi.com/v1',
     model: 'MiniMax-M3'
   }
   isConfigured.value = false
-  localStorage.removeItem('chat-api-config')
-  ElMessage.info('已重置 API 配置')
+
+  if (!savedConfig) return
+
+  try {
+    const config = JSON.parse(savedConfig)
+    if (config.apiKey) {
+      configForm.value = {
+        apiKey: config.apiKey,
+        baseURL: config.baseURL || 'https://api.minimaxi.com/v1',
+        model: config.model || 'MiniMax-M3'
+      }
+      isConfigured.value = true
+    }
+  } catch (error) {
+    console.warn('读取 API 配置失败:', error)
+  }
 }
 
-const handleOpenOnboarding = () => {
-  window.dispatchEvent(new CustomEvent('resume-open-onboarding'))
+const handleOpenSettings = (tab: 'api' | 'profile' = 'profile') => {
+  window.dispatchEvent(new CustomEvent('resume-open-onboarding', { detail: { tab } }))
 }
 
 const appendProfilePrompt = (prompt: string) => {
@@ -258,11 +222,12 @@ const handleGenerate = async () => {
     return
   }
 
-  const apiConfig = JSON.parse(localStorage.getItem('chat-api-config') || '{}')
+  const apiConfig = JSON.parse(localStorage.getItem(API_CONFIG_KEY) || '{}')
   
   if (!apiConfig.apiKey) {
     ElMessage.error('请先配置 API Key')
     isConfigured.value = false
+    handleOpenSettings('api')
     return
   }
 
@@ -294,21 +259,17 @@ const handleGenerate = async () => {
 // 初始化
 onMounted(() => {
   onboardingStore.loadFromLocalStorage()
-
-  // 检查是否已配置 API
-  const savedConfig = localStorage.getItem('chat-api-config')
-  if (savedConfig) {
-    const config = JSON.parse(savedConfig)
-    if (config.apiKey) {
-      configForm.value = config
-      isConfigured.value = true
-    }
-  }
+  loadApiConfig()
+  window.addEventListener('resume-api-config-changed', loadApiConfig)
   
   // 默认选择第一个模板
   if (promptTemplates.length > 0) {
     handleSelect(promptTemplates[0])
   }
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resume-api-config-changed', loadApiConfig)
 })
 </script>
 
@@ -336,6 +297,30 @@ onMounted(() => {
   }
 }
 
+.settings-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+
+  .el-tag {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+}
+
+.api-empty-section {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 220px;
+  border: 1px dashed #dcdfe6;
+  border-radius: 10px;
+  background: #fafafa;
+}
+
 // 底部区域：提示词编辑 + 操作按钮（固定底部）
 .selector-bottom {
   flex-shrink: 0;
@@ -348,36 +333,6 @@ onMounted(() => {
     overflow-y: auto;
     margin-bottom: 12px;
   }
-}
-
-// API 配置区域
-.api-config-section {
-  .config-form {
-    .el-form-item {
-      margin-bottom: 15px;
-    }
-  }
-}
-
-// 配置状态
-.config-status {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 8px;
-  
-  .el-tag {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-  }
-}
-
-.config-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
 }
 
 .category-tabs {
