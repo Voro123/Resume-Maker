@@ -1,5 +1,7 @@
 <template>
   <div class="editor-container" :class="{ 'exporting-pdf': isExporting }">
+    <OnboardingDialog />
+
     <!-- 左侧：提示词输入 -->
     <div class="editor-left" :class="{ 'collapsed': leftCollapsed }">
       <div class="panel-header">
@@ -64,6 +66,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import PromptTemplateSelector from '@/components/PromptTemplateSelector.vue'
 import ResumePreview from '@/components/ResumePreview.vue'
 import ChatPanel from '@/components/ChatPanel.vue'
+import OnboardingDialog from '@/components/OnboardingDialog.vue'
 import { generatePDF } from '@/utils/pdf'
 import { useResumeStore } from '@/stores/resume'
 
