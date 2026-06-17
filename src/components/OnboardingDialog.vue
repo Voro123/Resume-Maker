@@ -1,240 +1,281 @@
 <template>
   <el-dialog
     v-model="visible"
-    title="先填写简历基础信息"
+    title="项目设置"
     width="920px"
     :close-on-click-modal="false"
     class="onboarding-dialog"
   >
-    <el-steps :active="activeStep" finish-status="success" align-center>
-      <el-step title="基础信息" />
-      <el-step title="项目经历" />
-      <el-step title="确认生成" />
-    </el-steps>
+    <el-tabs v-model="activeSettingsTab" class="settings-tabs">
+      <el-tab-pane label="API 配置" name="api">
+        <div class="dialog-body api-settings-body">
+          <el-alert
+            type="info"
+            :closable="false"
+            show-icon
+            title="API Key 仅保存在浏览器 localStorage 中，用于调用后端生成简历和优化项目经历。"
+          />
 
-    <div class="dialog-body">
-      <div v-if="activeStep === 0" class="step-panel">
-        <el-alert
-          type="info"
-          :closable="false"
-          show-icon
-          title="姓名、年龄、联系方式等信息会作为生成简历的真实上下文，后续生成时会自动拼进提示词。"
-        />
-
-        <el-form label-position="top" class="basic-form">
-          <div class="form-grid">
-            <el-form-item label="姓名">
-              <el-input v-model="basicInfo.name" placeholder="例如：张三" clearable />
+          <el-form label-position="top" class="api-config-form">
+            <el-form-item label="API Key">
+              <el-input
+                v-model="apiConfigForm.apiKey"
+                type="password"
+                placeholder="请输入 MiniMax API Key"
+                show-password
+                clearable
+              />
             </el-form-item>
-            <el-form-item label="年龄">
-              <el-input v-model="basicInfo.age" placeholder="例如：25" clearable />
+
+            <el-form-item label="模型选择">
+              <el-select v-model="apiConfigForm.model" style="width: 100%">
+                <el-option label="MiniMax-M3" value="MiniMax-M3" />
+              </el-select>
             </el-form-item>
-            <el-form-item label="求职目标/岗位">
-              <el-input v-model="basicInfo.targetRole" placeholder="例如：前端工程师" clearable />
-            </el-form-item>
-            <el-form-item label="所在城市">
-              <el-input v-model="basicInfo.city" placeholder="例如：上海" clearable />
-            </el-form-item>
-            <el-form-item label="电话">
-              <el-input v-model="basicInfo.phone" placeholder="例如：138xxxx8888" clearable />
-            </el-form-item>
-            <el-form-item label="邮箱">
-              <el-input v-model="basicInfo.email" placeholder="例如：name@example.com" clearable />
-            </el-form-item>
-          </div>
 
-          <el-form-item label="教育背景">
-            <el-input
-              v-model="basicInfo.education"
-              type="textarea"
-              :rows="2"
-              placeholder="例如：XX大学 / 软件工程 / 本科 / 2020-2024"
-            />
-          </el-form-item>
-
-          <el-form-item label="技能关键词">
-            <el-input
-              v-model="basicInfo.skills"
-              type="textarea"
-              :rows="2"
-              placeholder="例如：Vue3、TypeScript、Node.js、性能优化、组件库开发"
-            />
-          </el-form-item>
-
-          <el-form-item label="个人总结 / 求职亮点">
-            <el-input
-              v-model="basicInfo.selfSummary"
-              type="textarea"
-              :rows="3"
-              placeholder="用一两句话描述你的优势，例如：有完整项目从 0 到 1 落地经验，擅长复杂表单和可视化编辑器。"
-            />
-          </el-form-item>
-        </el-form>
-      </div>
-
-      <div v-else-if="activeStep === 1" class="step-panel">
-        <el-alert
-          type="info"
-          :closable="false"
-          show-icon
-          title="项目经历支持填写多个项目。项目名称、时间、角色、技术栈等会独立保存，生成简历时会更稳定。"
-        />
-
-        <div class="project-toolbar">
-          <el-tabs v-model="activeProjectId" type="card" class="project-tabs">
-            <el-tab-pane
-              v-for="(project, index) in projects"
-              :key="project.id"
-              :name="project.id"
-              :label="project.name || `项目 ${index + 1}`"
-            />
-          </el-tabs>
-          <div class="project-toolbar-actions">
-            <el-button type="primary" plain size="small" @click="addProject">
-              <el-icon><Plus /></el-icon>
-              新增项目
-            </el-button>
-            <el-button
-              type="danger"
-              plain
-              size="small"
-              :disabled="projects.length <= 1"
-              @click="removeCurrentProject"
-            >
-              <el-icon><Delete /></el-icon>
-              删除当前项目
-            </el-button>
-          </div>
-        </div>
-
-        <el-radio-group v-model="projectMode" class="mode-switch">
-          <el-radio-button label="manual">结构化填写</el-radio-button>
-          <el-radio-button label="qa">AI 问答挖掘</el-radio-button>
-        </el-radio-group>
-
-        <div v-if="projectMode === 'manual'" class="manual-panel">
-          <el-form label-position="top">
-            <div class="form-grid">
-              <el-form-item label="项目名称">
-                <el-input v-model="currentProject.name" placeholder="例如：AI 简历生成器" clearable />
-              </el-form-item>
-              <el-form-item label="项目时间">
-                <el-input v-model="currentProject.dateRange" placeholder="例如：2024.03 - 2024.06" clearable />
-              </el-form-item>
-              <el-form-item label="担任角色">
-                <el-input v-model="currentProject.role" placeholder="例如：前端负责人 / 全栈开发" clearable />
-              </el-form-item>
-              <el-form-item label="技术栈">
-                <el-input v-model="currentProject.techStack" placeholder="例如：Vue3、TypeScript、Pinia、Node.js" clearable />
-              </el-form-item>
+            <div class="api-actions">
+              <el-button type="primary" :disabled="!apiConfigForm.apiKey" @click="handleSaveApiConfig">
+                <el-icon><Check /></el-icon>
+                保存 API 配置
+              </el-button>
+              <el-button plain @click="handleResetApiConfig">清空配置</el-button>
             </div>
-
-            <el-form-item label="项目简介">
-              <el-input
-                v-model="currentProject.description"
-                type="textarea"
-                :rows="3"
-                placeholder="这个项目面向谁、解决什么问题、核心功能是什么。"
-              />
-            </el-form-item>
-
-            <el-form-item label="负责内容">
-              <el-input
-                v-model="currentProject.responsibilities"
-                type="textarea"
-                :rows="4"
-                placeholder="建议写你本人负责的模块、方案设计、开发实现、协作推进等。"
-              />
-            </el-form-item>
-
-            <el-form-item label="项目成果 / 量化指标">
-              <el-input
-                v-model="currentProject.achievements"
-                type="textarea"
-                :rows="3"
-                placeholder="例如：将生成耗时降低 30%；支持 10+ 模板；提升投递效率等。"
-              />
-            </el-form-item>
-
-            <el-form-item label="补充原始信息">
-              <el-input
-                v-model="currentProject.rawNotes"
-                type="textarea"
-                :rows="3"
-                placeholder="写得粗糙也没关系，可以先记录背景、难点、亮点，后续让 AI 优化。"
-              />
-            </el-form-item>
           </el-form>
         </div>
+      </el-tab-pane>
 
-        <div v-else class="qa-panel">
-          <div class="question-card">
-            <div class="question-index">当前项目：{{ currentProject.name || currentProjectLabel }} · 问题 {{ currentQuestionIndex + 1 }} / {{ projectQuestions.length }}</div>
-            <h3>{{ currentQuestion.question }}</h3>
-            <p>{{ currentQuestion.helper }}</p>
-            <el-input
-              v-model="qaAnswers[currentQuestionIndex]"
-              type="textarea"
-              :rows="5"
-              :placeholder="currentQuestion.placeholder"
+      <el-tab-pane label="候选人信息" name="profile">
+        <el-steps :active="activeStep" finish-status="success" align-center>
+          <el-step title="基础信息" />
+          <el-step title="项目经历" />
+          <el-step title="确认生成" />
+        </el-steps>
+
+        <div class="dialog-body">
+          <div v-if="activeStep === 0" class="step-panel">
+            <el-alert
+              type="info"
+              :closable="false"
+              show-icon
+              title="姓名、年龄、联系方式等信息会作为生成简历的真实上下文，后续生成时会自动拼进提示词。"
             />
+
+            <el-form label-position="top" class="basic-form">
+              <div class="form-grid">
+                <el-form-item label="姓名">
+                  <el-input v-model="basicInfo.name" placeholder="例如：张三" clearable />
+                </el-form-item>
+                <el-form-item label="年龄">
+                  <el-input v-model="basicInfo.age" placeholder="例如：25" clearable />
+                </el-form-item>
+                <el-form-item label="求职目标/岗位">
+                  <el-input v-model="basicInfo.targetRole" placeholder="例如：前端工程师" clearable />
+                </el-form-item>
+                <el-form-item label="所在城市">
+                  <el-input v-model="basicInfo.city" placeholder="例如：上海" clearable />
+                </el-form-item>
+                <el-form-item label="电话">
+                  <el-input v-model="basicInfo.phone" placeholder="例如：138xxxx8888" clearable />
+                </el-form-item>
+                <el-form-item label="邮箱">
+                  <el-input v-model="basicInfo.email" placeholder="例如：name@example.com" clearable />
+                </el-form-item>
+              </div>
+
+              <el-form-item label="教育背景">
+                <el-input
+                  v-model="basicInfo.education"
+                  type="textarea"
+                  :rows="2"
+                  placeholder="例如：XX大学 / 软件工程 / 本科 / 2020-2024"
+                />
+              </el-form-item>
+
+              <el-form-item label="技能关键词">
+                <el-input
+                  v-model="basicInfo.skills"
+                  type="textarea"
+                  :rows="2"
+                  placeholder="例如：Vue3、TypeScript、Node.js、性能优化、组件库开发"
+                />
+              </el-form-item>
+
+              <el-form-item label="个人总结 / 求职亮点">
+                <el-input
+                  v-model="basicInfo.selfSummary"
+                  type="textarea"
+                  :rows="3"
+                  placeholder="用一两句话描述你的优势，例如：有完整项目从 0 到 1 落地经验，擅长复杂表单和可视化编辑器。"
+                />
+              </el-form-item>
+            </el-form>
           </div>
 
-          <div class="qa-actions">
-            <el-button :disabled="currentQuestionIndex === 0" @click="currentQuestionIndex--">上一题</el-button>
-            <el-button v-if="currentQuestionIndex < projectQuestions.length - 1" type="primary" @click="currentQuestionIndex++">下一题</el-button>
-            <el-button v-else type="success" @click="buildProjectFromQa">生成当前项目草稿</el-button>
-          </div>
-        </div>
+          <div v-else-if="activeStep === 1" class="step-panel">
+            <el-alert
+              type="info"
+              :closable="false"
+              show-icon
+              title="项目经历支持填写多个项目。项目名称、时间、角色、技术栈等会独立保存，生成简历时会更稳定。"
+            />
 
-        <div class="polish-actions">
-          <el-button type="primary" plain :loading="isPolishing" @click="handlePolishProject">
-            <el-icon><MagicStick /></el-icon>
-            AI 优化全部项目经历
-          </el-button>
-          <span class="tip-text">需要先在左侧配置 API Key；未配置时仍可保存结构化项目。</span>
-        </div>
-      </div>
+            <div class="project-toolbar">
+              <el-tabs v-model="activeProjectId" type="card" class="project-tabs">
+                <el-tab-pane
+                  v-for="(project, index) in projects"
+                  :key="project.id"
+                  :name="project.id"
+                  :label="project.name || `项目 ${index + 1}`"
+                />
+              </el-tabs>
+              <div class="project-toolbar-actions">
+                <el-button type="primary" plain size="small" @click="addProject">
+                  <el-icon><Plus /></el-icon>
+                  新增项目
+                </el-button>
+                <el-button
+                  type="danger"
+                  plain
+                  size="small"
+                  :disabled="projects.length <= 1"
+                  @click="removeCurrentProject"
+                >
+                  <el-icon><Delete /></el-icon>
+                  删除当前项目
+                </el-button>
+              </div>
+            </div>
 
-      <div v-else class="step-panel preview-panel">
-        <el-alert
-          type="success"
-          :closable="false"
-          show-icon
-          title="确认后，这些信息会在生成简历时自动作为上下文使用。你也可以稍后通过设置图标重新填写。"
-        />
+            <el-radio-group v-model="projectMode" class="mode-switch">
+              <el-radio-button label="manual">结构化填写</el-radio-button>
+              <el-radio-button label="qa">AI 问答挖掘</el-radio-button>
+            </el-radio-group>
 
-        <h3>基础信息</h3>
-        <div class="preview-box">
-          <p><strong>姓名：</strong>{{ basicInfo.name || '未填写' }}</p>
-          <p><strong>年龄：</strong>{{ basicInfo.age || '未填写' }}</p>
-          <p><strong>求职目标：</strong>{{ basicInfo.targetRole || '未填写' }}</p>
-          <p><strong>联系方式：</strong>{{ contactPreview || '未填写' }}</p>
-          <p><strong>教育背景：</strong>{{ basicInfo.education || '未填写' }}</p>
-          <p><strong>技能：</strong>{{ basicInfo.skills || '未填写' }}</p>
-          <p><strong>总结：</strong>{{ basicInfo.selfSummary || '未填写' }}</p>
-        </div>
+            <div v-if="projectMode === 'manual'" class="manual-panel">
+              <el-form label-position="top">
+                <div class="form-grid">
+                  <el-form-item label="项目名称">
+                    <el-input v-model="currentProject.name" placeholder="例如：AI 简历生成器" clearable />
+                  </el-form-item>
+                  <el-form-item label="项目时间">
+                    <el-input v-model="currentProject.dateRange" placeholder="例如：2024.03 - 2024.06" clearable />
+                  </el-form-item>
+                  <el-form-item label="担任角色">
+                    <el-input v-model="currentProject.role" placeholder="例如：前端负责人 / 全栈开发" clearable />
+                  </el-form-item>
+                  <el-form-item label="技术栈">
+                    <el-input v-model="currentProject.techStack" placeholder="例如：Vue3、TypeScript、Pinia、Node.js" clearable />
+                  </el-form-item>
+                </div>
 
-        <h3>项目经历</h3>
-        <div class="preview-box project-preview">
-          <div v-if="filledProjects.length" class="project-preview-list">
-            <div v-for="(project, index) in filledProjects" :key="project.id" class="project-preview-item">
-              <strong>{{ index + 1 }}. {{ project.name || '未命名项目' }}</strong>
-              <p v-if="project.dateRange">时间：{{ project.dateRange }}</p>
-              <p v-if="project.role">角色：{{ project.role }}</p>
-              <p v-if="project.techStack">技术栈：{{ project.techStack }}</p>
-              <p v-if="project.description">简介：{{ project.description }}</p>
-              <p v-if="project.responsibilities">负责：{{ project.responsibilities }}</p>
-              <p v-if="project.achievements">成果：{{ project.achievements }}</p>
+                <el-form-item label="项目简介">
+                  <el-input
+                    v-model="currentProject.description"
+                    type="textarea"
+                    :rows="3"
+                    placeholder="这个项目面向谁、解决什么问题、核心功能是什么。"
+                  />
+                </el-form-item>
+
+                <el-form-item label="负责内容">
+                  <el-input
+                    v-model="currentProject.responsibilities"
+                    type="textarea"
+                    :rows="4"
+                    placeholder="建议写你本人负责的模块、方案设计、开发实现、协作推进等。"
+                  />
+                </el-form-item>
+
+                <el-form-item label="项目成果 / 量化指标">
+                  <el-input
+                    v-model="currentProject.achievements"
+                    type="textarea"
+                    :rows="3"
+                    placeholder="例如：将生成耗时降低 30%；支持 10+ 模板；提升投递效率等。"
+                  />
+                </el-form-item>
+
+                <el-form-item label="补充原始信息">
+                  <el-input
+                    v-model="currentProject.rawNotes"
+                    type="textarea"
+                    :rows="3"
+                    placeholder="写得粗糙也没关系，可以先记录背景、难点、亮点，后续让 AI 优化。"
+                  />
+                </el-form-item>
+              </el-form>
+            </div>
+
+            <div v-else class="qa-panel">
+              <div class="question-card">
+                <div class="question-index">当前项目：{{ currentProject.name || currentProjectLabel }} · 问题 {{ currentQuestionIndex + 1 }} / {{ projectQuestions.length }}</div>
+                <h3>{{ currentQuestion.question }}</h3>
+                <p>{{ currentQuestion.helper }}</p>
+                <el-input
+                  v-model="qaAnswers[currentQuestionIndex]"
+                  type="textarea"
+                  :rows="5"
+                  :placeholder="currentQuestion.placeholder"
+                />
+              </div>
+
+              <div class="qa-actions">
+                <el-button :disabled="currentQuestionIndex === 0" @click="currentQuestionIndex--">上一题</el-button>
+                <el-button v-if="currentQuestionIndex < projectQuestions.length - 1" type="primary" @click="currentQuestionIndex++">下一题</el-button>
+                <el-button v-else type="success" @click="buildProjectFromQa">生成当前项目草稿</el-button>
+              </div>
+            </div>
+
+            <div class="polish-actions">
+              <el-button type="primary" plain :loading="isPolishing" @click="handlePolishProject">
+                <el-icon><MagicStick /></el-icon>
+                AI 优化全部项目经历
+              </el-button>
+              <span class="tip-text">需要先配置 API Key；未配置时仍可保存结构化项目。</span>
             </div>
           </div>
-          <span v-else>未填写</span>
+
+          <div v-else class="step-panel preview-panel">
+            <el-alert
+              type="success"
+              :closable="false"
+              show-icon
+              title="确认后，这些信息会在生成简历时自动作为上下文使用。你也可以稍后通过设置图标重新填写。"
+            />
+
+            <h3>基础信息</h3>
+            <div class="preview-box">
+              <p><strong>姓名：</strong>{{ basicInfo.name || '未填写' }}</p>
+              <p><strong>年龄：</strong>{{ basicInfo.age || '未填写' }}</p>
+              <p><strong>求职目标：</strong>{{ basicInfo.targetRole || '未填写' }}</p>
+              <p><strong>联系方式：</strong>{{ contactPreview || '未填写' }}</p>
+              <p><strong>教育背景：</strong>{{ basicInfo.education || '未填写' }}</p>
+              <p><strong>技能：</strong>{{ basicInfo.skills || '未填写' }}</p>
+              <p><strong>总结：</strong>{{ basicInfo.selfSummary || '未填写' }}</p>
+            </div>
+
+            <h3>项目经历</h3>
+            <div class="preview-box project-preview">
+              <div v-if="filledProjects.length" class="project-preview-list">
+                <div v-for="(project, index) in filledProjects" :key="project.id" class="project-preview-item">
+                  <strong>{{ index + 1 }}. {{ project.name || '未命名项目' }}</strong>
+                  <p v-if="project.dateRange">时间：{{ project.dateRange }}</p>
+                  <p v-if="project.role">角色：{{ project.role }}</p>
+                  <p v-if="project.techStack">技术栈：{{ project.techStack }}</p>
+                  <p v-if="project.description">简介：{{ project.description }}</p>
+                  <p v-if="project.responsibilities">负责：{{ project.responsibilities }}</p>
+                  <p v-if="project.achievements">成果：{{ project.achievements }}</p>
+                </div>
+              </div>
+              <span v-else>未填写</span>
+            </div>
+          </div>
         </div>
-      </div>
-    </div>
+      </el-tab-pane>
+    </el-tabs>
 
     <template #footer>
-      <div class="dialog-footer">
+      <div v-if="activeSettingsTab === 'profile'" class="dialog-footer">
         <el-button @click="handleSkip">稍后填写</el-button>
         <div>
           <el-button v-if="activeStep > 0" @click="activeStep--">上一步</el-button>
@@ -242,21 +283,27 @@
           <el-button v-else type="primary" @click="handleSave">保存并开始生成</el-button>
         </div>
       </div>
+      <div v-else class="dialog-footer api-footer">
+        <span class="tip-text">保存后主界面会自动刷新 API 配置状态。</span>
+        <el-button @click="visible = false">关闭</el-button>
+      </div>
     </template>
   </el-dialog>
 </template>
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
-import { Delete, MagicStick, Plus } from '@element-plus/icons-vue'
+import { Check, Delete, MagicStick, Plus } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import type { CandidateBasicInfo, CandidateProjectExperience } from '@/types/resume'
 import { generateResumeDataViaBackend } from '@/utils/backend-api'
 import { useOnboardingStore } from '@/stores/onboarding'
 
 const onboardingStore = useOnboardingStore()
+const API_CONFIG_KEY = 'chat-api-config'
 
 const visible = ref(false)
+const activeSettingsTab = ref<'api' | 'profile'>('profile')
 const activeStep = ref(0)
 const projectMode = ref<'manual' | 'qa'>('manual')
 const currentQuestionIndex = ref(0)
@@ -264,6 +311,12 @@ const qaAnswers = ref<string[]>([])
 const isPolishing = ref(false)
 const projects = ref<CandidateProjectExperience[]>([onboardingStore.createEmptyProject()])
 const activeProjectId = ref(projects.value[0].id)
+
+const apiConfigForm = reactive({
+  apiKey: '',
+  baseURL: 'https://api.minimaxi.com/v1',
+  model: 'MiniMax-M3'
+})
 
 const basicInfo = reactive<CandidateBasicInfo>(onboardingStore.createEmptyBasicInfo())
 
@@ -326,6 +379,50 @@ const hasProjectContent = (project: CandidateProjectExperience) => {
 
 const filledProjects = computed(() => projects.value.filter(hasProjectContent))
 
+const notifyApiConfigChanged = () => {
+  window.dispatchEvent(new CustomEvent('resume-api-config-changed'))
+}
+
+const loadApiConfig = () => {
+  const savedConfig = localStorage.getItem(API_CONFIG_KEY)
+  Object.assign(apiConfigForm, {
+    apiKey: '',
+    baseURL: 'https://api.minimaxi.com/v1',
+    model: 'MiniMax-M3'
+  })
+
+  if (!savedConfig) return
+
+  try {
+    const parsed = JSON.parse(savedConfig)
+    Object.assign(apiConfigForm, {
+      apiKey: parsed.apiKey || '',
+      baseURL: parsed.baseURL || 'https://api.minimaxi.com/v1',
+      model: parsed.model || 'MiniMax-M3'
+    })
+  } catch (error) {
+    console.warn('读取 API 配置失败:', error)
+  }
+}
+
+const handleSaveApiConfig = () => {
+  if (!apiConfigForm.apiKey) {
+    ElMessage.warning('请输入 API Key')
+    return
+  }
+
+  localStorage.setItem(API_CONFIG_KEY, JSON.stringify(apiConfigForm))
+  notifyApiConfigChanged()
+  ElMessage.success('API 配置已保存')
+}
+
+const handleResetApiConfig = () => {
+  localStorage.removeItem(API_CONFIG_KEY)
+  loadApiConfig()
+  notifyApiConfigChanged()
+  ElMessage.info('已清空 API 配置')
+}
+
 const ensureProject = () => {
   if (!projects.value.length) {
     const project = onboardingStore.createEmptyProject()
@@ -355,10 +452,13 @@ const restoreProfile = () => {
   activeProjectId.value = projects.value[0].id
 }
 
-const openDialog = () => {
+const openDialog = (event?: Event) => {
+  const detail = (event as CustomEvent<{ tab?: 'api' | 'profile' }>)?.detail
   onboardingStore.loadFromLocalStorage()
+  loadApiConfig()
   restoreProfile()
   activeStep.value = 0
+  activeSettingsTab.value = detail?.tab || 'profile'
   visible.value = true
 }
 
@@ -460,9 +560,10 @@ const handlePolishProject = async () => {
     return
   }
 
-  const apiConfig = JSON.parse(localStorage.getItem('chat-api-config') || '{}')
+  const apiConfig = JSON.parse(localStorage.getItem(API_CONFIG_KEY) || '{}')
   if (!apiConfig.apiKey) {
-    ElMessage.warning('请先在左侧配置 API Key，再使用 AI 优化')
+    ElMessage.warning('请先配置 API Key，再使用 AI 优化')
+    activeSettingsTab.value = 'api'
     return
   }
 
@@ -512,9 +613,11 @@ const handleSkip = () => {
 
 onMounted(() => {
   onboardingStore.loadFromLocalStorage()
+  loadApiConfig()
   restoreProfile()
   ensureProject()
   visible.value = onboardingStore.needsOnboarding
+  activeSettingsTab.value = 'profile'
   window.addEventListener('resume-open-onboarding', openDialog)
 })
 
@@ -524,9 +627,27 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped lang="scss">
+.settings-tabs {
+  margin-top: -8px;
+}
+
 .dialog-body {
   margin-top: 24px;
   min-height: 520px;
+}
+
+.api-settings-body {
+  min-height: 280px;
+}
+
+.api-config-form {
+  max-width: 520px;
+}
+
+.api-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 .step-panel {
@@ -647,11 +768,16 @@ onBeforeUnmount(() => {
   justify-content: space-between;
 }
 
+.api-footer {
+  justify-content: space-between;
+}
+
 @media (max-width: 768px) {
   .form-grid {
     grid-template-columns: 1fr;
   }
 
+  .api-actions,
   .project-toolbar,
   .project-toolbar-actions,
   .qa-actions,
