@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "concurrently \"npm run dev:front\" \"npm run server\"",
+    "dev": "concurrently \"git pull\" \"npm run dev:front\" \"npm run server\"",
     "build": "vue-tsc -b && vite build",
     "preview": "vite preview",
     "server": "python server.py",
