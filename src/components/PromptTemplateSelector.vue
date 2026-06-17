@@ -4,84 +4,102 @@
     <div class="selector-main">
       <!-- API 配置（最高优先级） -->
       <div v-if="!isConfigured" class="api-config-section">
-      <el-alert type="warning" :closable="false" show-icon title="请先配置 API" style="margin-bottom: 15px" />
-      
-      <div class="config-form">
-        <el-form label-position="top" size="default">
-          <el-form-item label="API Key">
-            <el-input 
-              v-model="configForm.apiKey" 
-              type="password" 
-              placeholder="请输入 MiniMax API Key"
-              show-password
-              clearable
-            />
-          </el-form-item>
-          
-          <el-form-item label="模型选择">
-            <el-select v-model="configForm.model" style="width: 100%">
-              <el-option label="MiniMax-M3" value="MiniMax-M3" />
-              <!-- 后续可在此添加更多模型 -->
-            </el-select>
-          </el-form-item>
-          
-          <el-form-item>
-            <el-button 
-              type="primary" 
-              @click="handleSaveConfig"
-              :disabled="!configForm.apiKey"
-              style="width: 100%"
-            >
-              <el-icon><Check /></el-icon>
-              保存配置
-            </el-button>
-          </el-form-item>
-        </el-form>
+        <el-alert type="warning" :closable="false" show-icon title="请先配置 API" style="margin-bottom: 15px" />
+        
+        <div class="config-form">
+          <el-form label-position="top" size="default">
+            <el-form-item label="API Key">
+              <el-input 
+                v-model="configForm.apiKey" 
+                type="password" 
+                placeholder="请输入 MiniMax API Key"
+                show-password
+                clearable
+              />
+            </el-form-item>
+            
+            <el-form-item label="模型选择">
+              <el-select v-model="configForm.model" style="width: 100%">
+                <el-option label="MiniMax-M3" value="MiniMax-M3" />
+                <!-- 后续可在此添加更多模型 -->
+              </el-select>
+            </el-form-item>
+            
+            <el-form-item>
+              <el-button 
+                type="primary" 
+                @click="handleSaveConfig"
+                :disabled="!configForm.apiKey"
+                style="width: 100%"
+              >
+                <el-icon><Check /></el-icon>
+                保存配置
+              </el-button>
+            </el-form-item>
+          </el-form>
+        </div>
+        
+        <el-divider />
       </div>
-      
-      <el-divider />
-    </div>
 
-    <!-- 已配置状态 -->
-    <div v-else class="config-status">
-      <el-tag type="success" size="small">
-        <el-icon><Check /></el-icon>
-        API 已配置 ({{ configForm.model }})
-      </el-tag>
-      <el-button type="text" size="small" @click="handleResetConfig">修改配置</el-button>
-      
-      <el-divider style="margin: 10px 0" />
-    </div>
+      <!-- 已配置状态 -->
+      <div v-else class="config-status">
+        <el-tag type="success" size="small">
+          <el-icon><Check /></el-icon>
+          API 已配置 ({{ configForm.model }})
+        </el-tag>
+        <el-button type="text" size="small" @click="handleResetConfig">修改配置</el-button>
+        
+        <el-divider style="margin: 10px 0" />
+      </div>
 
-    <!-- 分类筛选（仅在已配置时显示） -->
-    <div v-if="isConfigured" class="category-tabs">
-      <el-radio-group v-model="selectedCategory" size="small">
-        <el-radio-button 
-          v-for="cat in categories" 
-          :key="cat.id" 
-          :label="cat.id"
+      <div v-if="isConfigured" class="profile-status">
+        <el-alert
+          :type="onboardingStore.hasProfile ? 'success' : 'info'"
+          :closable="false"
+          show-icon
         >
-          {{ cat.name }}
-        </el-radio-button>
-      </el-radio-group>
-    </div>
+          <template #title>
+            <span v-if="onboardingStore.hasProfile">已带入首次引导填写的姓名、项目经历等信息</span>
+            <span v-else>尚未填写基础信息，生成时可能使用示例数据</span>
+          </template>
+          <template #default>
+            <el-button type="primary" link size="small" @click="handleOpenOnboarding">
+              {{ onboardingStore.hasProfile ? '重新填写' : '现在填写' }}
+            </el-button>
+          </template>
+        </el-alert>
+      </div>
 
-    <!-- 模板列表（仅在已配置时显示） -->
-    <div v-if="isConfigured" class="template-list">
-      <div
-        v-for="template in filteredTemplates"
-        :key="template.id"
-        class="template-card"
-        :class="{ active: selectedTemplate?.id === template.id }"
-        @click="handleSelect(template)"
-      >
-        <div class="template-icon">{{ template.icon || '📄' }}</div>
-        <div class="template-info">
-          <h4>{{ template.name }}</h4>
-          <p>{{ template.description }}</p>
+      <!-- 分类筛选（仅在已配置时显示） -->
+      <div v-if="isConfigured" class="category-tabs">
+        <el-radio-group v-model="selectedCategory" size="small">
+          <el-radio-button 
+            v-for="cat in categories" 
+            :key="cat.id" 
+            :label="cat.id"
+          >
+            {{ cat.name }}
+          </el-radio-button>
+        </el-radio-group>
+      </div>
+
+      <!-- 模板列表（仅在已配置时显示） -->
+      <div v-if="isConfigured" class="template-list">
+        <div
+          v-for="template in filteredTemplates"
+          :key="template.id"
+          class="template-card"
+          :class="{ active: selectedTemplate?.id === template.id }"
+          @click="handleSelect(template)"
+        >
+          <div class="template-icon">{{ template.icon || '📄' }}</div>
+          <div class="template-info">
+            <h4>{{ template.name }}</h4>
+            <p>{{ template.description }}</p>
+          </div>
         </div>
       </div>
-    </div>
     </div>  <!-- 关闭 selector-main -->
 
     <!-- 底部区域：提示词编辑 + 操作按钮 -->
@@ -112,7 +130,7 @@
 
         <div class="prompt-tip">
           <el-icon><InfoFilled /></el-icon>
-          您正在编辑的是简历的设计要求和内容模块，系统会自动组合固定指令一起发送给AI。
+          您正在编辑的是简历的设计要求和内容模块，系统会自动组合固定指令和首次引导信息一起发送给AI。
         </div>
       </div>
 
@@ -126,7 +144,7 @@
         />
         <div class="prompt-tip">
           <el-icon><InfoFilled /></el-icon>
-          提示：系统会自动添加输出格式要求（如输出完整HTML、A4尺寸等），您只需描述简历内容和风格。
+          提示：系统会自动添加输出格式要求和首次引导信息，您只需描述简历内容和风格。
         </div>
       </div>
 
@@ -154,9 +172,11 @@ import { MagicStick, Check, InfoFilled } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { promptTemplates, getCategories } from '@/config/promptTemplates'
 import { useResumeStore } from '@/stores/resume'
+import { useOnboardingStore } from '@/stores/onboarding'
 import type { PromptTemplate } from '@/types/resume'
 
 const resumeStore = useResumeStore()
+const onboardingStore = useOnboardingStore()
 
 // API 配置表单
 const configForm = ref({
@@ -233,7 +253,16 @@ const handleResetConfig = () => {
   ElMessage.info('已重置 API 配置')
 }
 
-// 生成简历 - 组合固定提示词和可编辑提示词
+const handleOpenOnboarding = () => {
+  window.dispatchEvent(new CustomEvent('resume-open-onboarding'))
+}
+
+const appendProfilePrompt = (prompt: string) => {
+  if (!onboardingStore.formattedPromptBlock) return prompt
+  return `${prompt}\n\n${onboardingStore.formattedPromptBlock}`
+}
+
+// 生成简历 - 组合固定提示词、可编辑提示词和首次引导信息
 const handleGenerate = async () => {
   if (!canGenerate.value) {
     ElMessage.warning('请先选择或输入提示词')
@@ -263,7 +292,7 @@ const handleGenerate = async () => {
       fullPrompt = fixedPrompt + '\n\n## 设计要求：\n' + editablePrompt.value
     }
 
-    await resumeStore.generateResume(apiConfig, fullPrompt)
+    await resumeStore.generateResume(apiConfig, appendProfilePrompt(fullPrompt))
     
     ElMessage.success('简历生成成功！')
   } catch (error: any) {
@@ -275,6 +304,8 @@ const handleGenerate = async () => {
 
 // 初始化
 onMounted(() => {
+  onboardingStore.loadFromLocalStorage()
+
   // 检查是否已配置 API
   const savedConfig = localStorage.getItem('chat-api-config')
   if (savedConfig) {
@@ -349,6 +380,16 @@ onMounted(() => {
     display: flex;
     align-items: center;
     gap: 4px;
+  }
+}
+
+.profile-status {
+  :deep(.el-alert__content) {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    gap: 8px;
   }
 }
 
