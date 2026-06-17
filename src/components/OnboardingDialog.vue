@@ -2,7 +2,7 @@
   <el-dialog
     v-model="visible"
     title="先填写简历基础信息"
-    width="760px"
+    width="920px"
     :close-on-click-modal="false"
     class="onboarding-dialog"
   >
@@ -73,26 +73,103 @@
       </div>
 
       <div v-else-if="activeStep === 1" class="step-panel">
+        <el-alert
+          type="info"
+          :closable="false"
+          show-icon
+          title="项目经历支持填写多个项目。项目名称、时间、角色、技术栈等会独立保存，生成简历时会更稳定。"
+        />
+
+        <div class="project-toolbar">
+          <el-tabs v-model="activeProjectId" type="card" class="project-tabs">
+            <el-tab-pane
+              v-for="(project, index) in projects"
+              :key="project.id"
+              :name="project.id"
+              :label="project.name || `项目 ${index + 1}`"
+            />
+          </el-tabs>
+          <div class="project-toolbar-actions">
+            <el-button type="primary" plain size="small" @click="addProject">
+              <el-icon><Plus /></el-icon>
+              新增项目
+            </el-button>
+            <el-button
+              type="danger"
+              plain
+              size="small"
+              :disabled="projects.length <= 1"
+              @click="removeCurrentProject"
+            >
+              <el-icon><Delete /></el-icon>
+              删除当前项目
+            </el-button>
+          </div>
+        </div>
+
         <el-radio-group v-model="projectMode" class="mode-switch">
-          <el-radio-button label="manual">直接填写</el-radio-button>
+          <el-radio-button label="manual">结构化填写</el-radio-button>
           <el-radio-button label="qa">AI 问答挖掘</el-radio-button>
         </el-radio-group>
 
         <div v-if="projectMode === 'manual'" class="manual-panel">
-          <el-input
-            v-model="projectDraft"
-            type="textarea"
-            :rows="12"
-            placeholder="请写下你的项目经历。建议包含：项目名称、时间、角色、技术栈、你负责的内容、最终结果/指标。"
-          />
-          <div class="tip-text">
-            写得粗糙也没关系，点击“AI 优化项目经历”后会尝试改成更适合简历的表达。
-          </div>
+          <el-form label-position="top">
+            <div class="form-grid">
+              <el-form-item label="项目名称">
+                <el-input v-model="currentProject.name" placeholder="例如：AI 简历生成器" clearable />
+              </el-form-item>
+              <el-form-item label="项目时间">
+                <el-input v-model="currentProject.dateRange" placeholder="例如：2024.03 - 2024.06" clearable />
+              </el-form-item>
+              <el-form-item label="担任角色">
+                <el-input v-model="currentProject.role" placeholder="例如：前端负责人 / 全栈开发" clearable />
+              </el-form-item>
+              <el-form-item label="技术栈">
+                <el-input v-model="currentProject.techStack" placeholder="例如：Vue3、TypeScript、Pinia、Node.js" clearable />
+              </el-form-item>
+            </div>
+
+            <el-form-item label="项目简介">
+              <el-input
+                v-model="currentProject.description"
+                type="textarea"
+                :rows="3"
+                placeholder="这个项目面向谁、解决什么问题、核心功能是什么。"
+              />
+            </el-form-item>
+
+            <el-form-item label="负责内容">
+              <el-input
+                v-model="currentProject.responsibilities"
+                type="textarea"
+                :rows="4"
+                placeholder="建议写你本人负责的模块、方案设计、开发实现、协作推进等。"
+              />
+            </el-form-item>
+
+            <el-form-item label="项目成果 / 量化指标">
+              <el-input
+                v-model="currentProject.achievements"
+                type="textarea"
+                :rows="3"
+                placeholder="例如：将生成耗时降低 30%；支持 10+ 模板；提升投递效率等。"
+              />
+            </el-form-item>
+
+            <el-form-item label="补充原始信息">
+              <el-input
+                v-model="currentProject.rawNotes"
+                type="textarea"
+                :rows="3"
+                placeholder="写得粗糙也没关系，可以先记录背景、难点、亮点，后续让 AI 优化。"
+              />
+            </el-form-item>
+          </el-form>
         </div>
 
         <div v-else class="qa-panel">
           <div class="question-card">
-            <div class="question-index">问题 {{ currentQuestionIndex + 1 }} / {{ projectQuestions.length }}</div>
+            <div class="question-index">当前项目：{{ currentProject.name || currentProjectLabel }} · 问题 {{ currentQuestionIndex + 1 }} / {{ projectQuestions.length }}</div>
             <h3>{{ currentQuestion.question }}</h3>
             <p>{{ currentQuestion.helper }}</p>
             <el-input
@@ -106,23 +183,16 @@
           <div class="qa-actions">
             <el-button :disabled="currentQuestionIndex === 0" @click="currentQuestionIndex--">上一题</el-button>
             <el-button v-if="currentQuestionIndex < projectQuestions.length - 1" type="primary" @click="currentQuestionIndex++">下一题</el-button>
-            <el-button v-else type="success" @click="buildProjectFromQa">生成项目草稿</el-button>
+            <el-button v-else type="success" @click="buildProjectFromQa">生成当前项目草稿</el-button>
           </div>
-
-          <el-input
-            v-model="projectDraft"
-            type="textarea"
-            :rows="8"
-            placeholder="问答生成的项目草稿会出现在这里，你也可以继续手动修改。"
-          />
         </div>
 
         <div class="polish-actions">
           <el-button type="primary" plain :loading="isPolishing" @click="handlePolishProject">
             <el-icon><MagicStick /></el-icon>
-            AI 优化项目经历
+            AI 优化全部项目经历
           </el-button>
-          <span class="tip-text">需要先在左侧配置 API Key；未配置时仍可保存原始草稿。</span>
+          <span class="tip-text">需要先在左侧配置 API Key；未配置时仍可保存结构化项目。</span>
         </div>
       </div>
 
@@ -131,7 +201,7 @@
           type="success"
           :closable="false"
           show-icon
-          title="确认后，这些信息会在生成简历时自动作为上下文使用。你也可以稍后重新填写。"
+          title="确认后，这些信息会在生成简历时自动作为上下文使用。你也可以稍后通过设置图标重新填写。"
         />
 
         <h3>基础信息</h3>
@@ -147,7 +217,18 @@
 
         <h3>项目经历</h3>
         <div class="preview-box project-preview">
-          {{ projectDraft || '未填写' }}
+          <div v-if="filledProjects.length" class="project-preview-list">
+            <div v-for="(project, index) in filledProjects" :key="project.id" class="project-preview-item">
+              <strong>{{ index + 1 }}. {{ project.name || '未命名项目' }}</strong>
+              <p v-if="project.dateRange">时间：{{ project.dateRange }}</p>
+              <p v-if="project.role">角色：{{ project.role }}</p>
+              <p v-if="project.techStack">技术栈：{{ project.techStack }}</p>
+              <p v-if="project.description">简介：{{ project.description }}</p>
+              <p v-if="project.responsibilities">负责：{{ project.responsibilities }}</p>
+              <p v-if="project.achievements">成果：{{ project.achievements }}</p>
+            </div>
+          </div>
+          <span v-else>未填写</span>
         </div>
       </div>
     </div>
@@ -167,9 +248,9 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
-import { MagicStick } from '@element-plus/icons-vue'
+import { Delete, MagicStick, Plus } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
-import type { CandidateBasicInfo, ProjectExperienceSource } from '@/types/resume'
+import type { CandidateBasicInfo, CandidateProjectExperience } from '@/types/resume'
 import { generateResumeDataViaBackend } from '@/utils/backend-api'
 import { useOnboardingStore } from '@/stores/onboarding'
 
@@ -179,9 +260,10 @@ const visible = ref(false)
 const activeStep = ref(0)
 const projectMode = ref<'manual' | 'qa'>('manual')
 const currentQuestionIndex = ref(0)
-const projectDraft = ref('')
 const qaAnswers = ref<string[]>([])
 const isPolishing = ref(false)
+const projects = ref<CandidateProjectExperience[]>([onboardingStore.createEmptyProject()])
+const activeProjectId = ref(projects.value[0].id)
 
 const basicInfo = reactive<CandidateBasicInfo>(onboardingStore.createEmptyBasicInfo())
 
@@ -192,9 +274,9 @@ const projectQuestions = [
     placeholder: '例如：企业内部低代码表单平台，解决运营人员无法自主搭建活动表单的问题。'
   },
   {
-    question: '你在项目中担任什么角色？负责哪些模块？',
-    helper: '重点写你直接负责的工作，而不是团队整体做了什么。',
-    placeholder: '例如：担任前端核心开发，负责拖拽编辑器、动态渲染器、权限控制和发布流程。'
+    question: '项目周期和你的角色是什么？',
+    helper: '补充项目时间、团队规模、你的身份和职责范围。',
+    placeholder: '例如：2024.03-2024.06，担任前端核心开发，负责编辑器和发布流程。'
   },
   {
     question: '用了哪些技术栈或关键方案？',
@@ -202,9 +284,9 @@ const projectQuestions = [
     placeholder: '例如：Vue3、TypeScript、Pinia、Element Plus、JSON Schema、虚拟滚动、组件懒加载。'
   },
   {
-    question: '项目有哪些难点？你是怎么解决的？',
-    helper: '简历里最有价值的是“难点 + 方法 + 结果”。',
-    placeholder: '例如：复杂表单联动性能差，通过依赖图和按需渲染把首屏渲染时间降低 40%。'
+    question: '你具体负责了哪些模块？有哪些难点？',
+    helper: '简历里最有价值的是“负责内容 + 难点 + 方法”。',
+    placeholder: '例如：负责拖拽画布、字段联动和实时预览，通过依赖图解决复杂联动性能问题。'
   },
   {
     question: '最终结果如何？有没有可量化指标？',
@@ -215,20 +297,62 @@ const projectQuestions = [
 
 const currentQuestion = computed(() => projectQuestions[currentQuestionIndex.value])
 
+const currentProject = computed<CandidateProjectExperience>(() => {
+  return projects.value.find((project) => project.id === activeProjectId.value) || projects.value[0]
+})
+
+const currentProjectIndex = computed(() => {
+  return Math.max(projects.value.findIndex((project) => project.id === activeProjectId.value), 0)
+})
+
+const currentProjectLabel = computed(() => `项目 ${currentProjectIndex.value + 1}`)
+
 const contactPreview = computed(() => {
   return [basicInfo.phone, basicInfo.email, basicInfo.city].filter(Boolean).join(' / ')
 })
 
+const hasProjectContent = (project: CandidateProjectExperience) => {
+  return Boolean(
+    project.name.trim() ||
+      project.dateRange.trim() ||
+      project.role.trim() ||
+      project.techStack.trim() ||
+      project.description.trim() ||
+      project.responsibilities.trim() ||
+      project.achievements.trim() ||
+      project.rawNotes.trim()
+  )
+}
+
+const filledProjects = computed(() => projects.value.filter(hasProjectContent))
+
+const ensureProject = () => {
+  if (!projects.value.length) {
+    const project = onboardingStore.createEmptyProject()
+    projects.value = [project]
+    activeProjectId.value = project.id
+  }
+}
+
+const resetQaState = () => {
+  currentQuestionIndex.value = 0
+  qaAnswers.value = []
+}
+
 const restoreProfile = () => {
   Object.assign(basicInfo, onboardingStore.createEmptyBasicInfo())
-  projectDraft.value = ''
+  projects.value = [onboardingStore.createEmptyProject()]
+  activeProjectId.value = projects.value[0].id
   projectMode.value = 'manual'
+  resetQaState()
 
   if (!onboardingStore.profile) return
 
   Object.assign(basicInfo, onboardingStore.profile.basicInfo)
-  projectDraft.value = onboardingStore.profile.projectExperience
-  projectMode.value = onboardingStore.profile.projectSource === 'qa' ? 'qa' : 'manual'
+  projects.value = onboardingStore.profile.projects?.length
+    ? onboardingStore.profile.projects.map((project) => ({ ...onboardingStore.createEmptyProject(), ...project }))
+    : [onboardingStore.createEmptyProject()]
+  activeProjectId.value = projects.value[0].id
 }
 
 const openDialog = () => {
@@ -238,46 +362,101 @@ const openDialog = () => {
   visible.value = true
 }
 
-const buildProjectFromQa = () => {
-  const lines = projectQuestions
-    .map((item, index) => {
-      const answer = qaAnswers.value[index]?.trim()
-      return answer ? `【${item.question}】\n${answer}` : ''
-    })
-    .filter(Boolean)
-
-  projectDraft.value = lines.join('\n\n')
+const addProject = () => {
+  const project = onboardingStore.createEmptyProject()
+  projects.value.push(project)
+  activeProjectId.value = project.id
   projectMode.value = 'manual'
-  ElMessage.success('已根据问答生成项目草稿，可继续编辑或使用 AI 优化')
+  resetQaState()
 }
 
-const formatProjectList = (projects: Array<Record<string, unknown>>) => {
-  return projects
-    .map((project) => {
-      const name = String(project.name || '未命名项目')
-      const role = String(project.role || '')
-      const dateRange = [project.startDate, project.endDate].filter(Boolean).join(' - ')
-      const techStack = Array.isArray(project.techStack) ? project.techStack.join('、') : String(project.techStack || '')
-      const description = String(project.description || '')
+const removeCurrentProject = () => {
+  if (projects.value.length <= 1) return
 
+  const nextProjects = projects.value.filter((project) => project.id !== activeProjectId.value)
+  projects.value = nextProjects
+  activeProjectId.value = nextProjects[Math.min(currentProjectIndex.value, nextProjects.length - 1)].id
+  resetQaState()
+}
+
+const buildProjectFromQa = () => {
+  const answers = projectQuestions.map((item, index) => qaAnswers.value[index]?.trim() || '')
+  const [overview, roleAndTime, techStack, responsibilities, achievements] = answers
+
+  if (overview) {
+    currentProject.value.description = [currentProject.value.description, overview].filter(Boolean).join('\n')
+  }
+  if (roleAndTime) {
+    currentProject.value.rawNotes = [currentProject.value.rawNotes, `时间/角色：${roleAndTime}`].filter(Boolean).join('\n')
+  }
+  if (techStack && !currentProject.value.techStack) {
+    currentProject.value.techStack = techStack
+  } else if (techStack) {
+    currentProject.value.rawNotes = [currentProject.value.rawNotes, `技术栈补充：${techStack}`].filter(Boolean).join('\n')
+  }
+  if (responsibilities) {
+    currentProject.value.responsibilities = [currentProject.value.responsibilities, responsibilities].filter(Boolean).join('\n')
+  }
+  if (achievements) {
+    currentProject.value.achievements = [currentProject.value.achievements, achievements].filter(Boolean).join('\n')
+  }
+  currentProject.value.source = 'qa'
+  projectMode.value = 'manual'
+  resetQaState()
+  ElMessage.success('已根据问答补充当前项目，可继续编辑或使用 AI 优化')
+}
+
+const formatProjectsAsText = () => {
+  return filledProjects.value
+    .map((project, index) => {
       return [
-        `项目名称：${name}`,
-        role ? `担任角色：${role}` : '',
-        dateRange ? `项目时间：${dateRange}` : '',
-        techStack ? `技术栈：${techStack}` : '',
-        description ? `项目描述：${description}` : ''
+        `项目 ${index + 1}`,
+        project.name ? `项目名称：${project.name}` : '',
+        project.dateRange ? `项目时间：${project.dateRange}` : '',
+        project.role ? `担任角色：${project.role}` : '',
+        project.techStack ? `技术栈：${project.techStack}` : '',
+        project.description ? `项目简介：${project.description}` : '',
+        project.responsibilities ? `负责内容：${project.responsibilities}` : '',
+        project.achievements ? `项目成果：${project.achievements}` : '',
+        project.rawNotes ? `补充信息：${project.rawNotes}` : ''
       ].filter(Boolean).join('\n')
     })
     .join('\n\n')
 }
 
+const normalizeAiProject = (project: Record<string, unknown>, index: number): CandidateProjectExperience => {
+  const techStack = Array.isArray(project.techStack) ? project.techStack.join('、') : String(project.techStack || '')
+  const dateRange = [project.startDate, project.endDate].filter(Boolean).join(' - ') || String(project.dateRange || '')
+  const responsibilities = Array.isArray(project.responsibilities)
+    ? project.responsibilities.join('\n')
+    : String(project.responsibilities || '')
+  const achievements = Array.isArray(project.achievements)
+    ? project.achievements.join('\n')
+    : String(project.achievements || '')
+
+  return {
+    ...onboardingStore.createEmptyProject(),
+    id: projects.value[index]?.id || onboardingStore.createEmptyProject().id,
+    name: String(project.name || projects.value[index]?.name || ''),
+    dateRange,
+    role: String(project.role || projects.value[index]?.role || ''),
+    techStack,
+    description: String(project.description || projects.value[index]?.description || ''),
+    responsibilities,
+    achievements,
+    rawNotes: String(project.rawNotes || projects.value[index]?.rawNotes || ''),
+    source: 'ai-polished',
+    aiOptimizedAt: Date.now()
+  }
+}
+
 const buildPolishPrompt = () => {
-  return `请基于以下候选人信息，提炼并优化项目经历。要求：\n1. 项目经历要适合简历展示，突出职责、技术方案、难点和结果。\n2. 尽量使用动作动词和可量化表达。\n3. 不要编造与用户描述明显冲突的信息；缺少指标时可写成“提升了交付效率”等保守表达。\n\n基础信息：\n${JSON.stringify(basicInfo, null, 2)}\n\n项目草稿：\n${projectDraft.value}`
+  return `请基于以下候选人信息，提炼并优化多个项目经历。要求：\n1. 每个项目都保留为独立项目，不要合并不同项目。\n2. 项目经历要适合简历展示，突出项目名称、时间、角色、技术栈、职责、技术方案、难点和结果。\n3. 尽量使用动作动词和可量化表达。\n4. 不要编造与用户描述明显冲突的信息；缺少指标时可写成“提升了交付效率”等保守表达。\n\n基础信息：\n${JSON.stringify(basicInfo, null, 2)}\n\n项目经历：\n${formatProjectsAsText()}`
 }
 
 const handlePolishProject = async () => {
-  if (!projectDraft.value.trim()) {
-    ElMessage.warning('请先填写或通过问答生成项目经历')
+  if (!filledProjects.value.length) {
+    ElMessage.warning('请先填写至少一个项目经历')
     return
   }
 
@@ -299,14 +478,15 @@ const handlePolishProject = async () => {
         location: basicInfo.city,
         website: ''
       },
-      rawText: projectDraft.value,
+      rawText: formatProjectsAsText(),
       generatedHTML: '',
       generatedCSS: ''
     }) as { projects?: Array<Record<string, unknown>> }
 
     if (data.projects?.length) {
-      projectDraft.value = formatProjectList(data.projects)
-      ElMessage.success('AI 已优化项目经历')
+      projects.value = data.projects.map(normalizeAiProject)
+      activeProjectId.value = projects.value[0].id
+      ElMessage.success('AI 已优化全部项目经历')
     } else {
       ElMessage.warning('AI 未返回项目经历，请补充更多项目信息后重试')
     }
@@ -319,8 +499,7 @@ const handlePolishProject = async () => {
 }
 
 const handleSave = () => {
-  const projectSource: ProjectExperienceSource = projectMode.value === 'qa' ? 'qa' : 'manual'
-  onboardingStore.saveProfile(basicInfo, projectDraft.value, projectSource)
+  onboardingStore.saveProfile(basicInfo, filledProjects.value)
   visible.value = false
   ElMessage.success('基础信息已保存，生成简历时会自动带入')
 }
@@ -334,6 +513,7 @@ const handleSkip = () => {
 onMounted(() => {
   onboardingStore.loadFromLocalStorage()
   restoreProfile()
+  ensureProject()
   visible.value = onboardingStore.needsOnboarding
   window.addEventListener('resume-open-onboarding', openDialog)
 })
@@ -346,7 +526,7 @@ onBeforeUnmount(() => {
 <style scoped lang="scss">
 .dialog-body {
   margin-top: 24px;
-  min-height: 480px;
+  min-height: 520px;
 }
 
 .step-panel {
@@ -363,6 +543,26 @@ onBeforeUnmount(() => {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0 16px;
+}
+
+.project-toolbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.project-tabs {
+  flex: 1;
+  min-width: 0;
+}
+
+.project-toolbar-actions,
+.qa-actions,
+.polish-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 .mode-switch {
@@ -401,13 +601,6 @@ onBeforeUnmount(() => {
   gap: 12px;
 }
 
-.qa-actions,
-.polish-actions {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
 .preview-panel h3 {
   margin: 6px 0 0;
   font-size: 15px;
@@ -428,8 +621,24 @@ onBeforeUnmount(() => {
 }
 
 .project-preview {
-  max-height: 180px;
+  max-height: 220px;
   overflow-y: auto;
+}
+
+.project-preview-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.project-preview-item {
+  padding-bottom: 12px;
+  border-bottom: 1px dashed #dcdfe6;
+
+  &:last-child {
+    padding-bottom: 0;
+    border-bottom: 0;
+  }
 }
 
 .dialog-footer {
@@ -443,6 +652,8 @@ onBeforeUnmount(() => {
     grid-template-columns: 1fr;
   }
 
+  .project-toolbar,
+  .project-toolbar-actions,
   .qa-actions,
   .polish-actions,
   .dialog-footer {
