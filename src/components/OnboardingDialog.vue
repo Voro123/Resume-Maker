@@ -166,7 +166,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { MagicStick } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import type { CandidateBasicInfo, ProjectExperienceSource } from '@/types/resume'
@@ -220,11 +220,22 @@ const contactPreview = computed(() => {
 })
 
 const restoreProfile = () => {
+  Object.assign(basicInfo, onboardingStore.createEmptyBasicInfo())
+  projectDraft.value = ''
+  projectMode.value = 'manual'
+
   if (!onboardingStore.profile) return
 
   Object.assign(basicInfo, onboardingStore.profile.basicInfo)
   projectDraft.value = onboardingStore.profile.projectExperience
   projectMode.value = onboardingStore.profile.projectSource === 'qa' ? 'qa' : 'manual'
+}
+
+const openDialog = () => {
+  onboardingStore.loadFromLocalStorage()
+  restoreProfile()
+  activeStep.value = 0
+  visible.value = true
 }
 
 const buildProjectFromQa = () => {
@@ -324,6 +335,11 @@ onMounted(() => {
   onboardingStore.loadFromLocalStorage()
   restoreProfile()
   visible.value = onboardingStore.needsOnboarding
+  window.addEventListener('resume-open-onboarding', openDialog)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resume-open-onboarding', openDialog)
 })
 </script>
 
