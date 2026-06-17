@@ -21,6 +21,31 @@ export interface GeneratedResume {
   updatedAt: number
 }
 
+// 首次引导中收集的基础信息
+export interface CandidateBasicInfo {
+  name: string
+  age: string
+  targetRole: string
+  phone: string
+  email: string
+  city: string
+  education: string
+  skills: string
+  selfSummary: string
+}
+
+// 项目经历来源
+export type ProjectExperienceSource = 'manual' | 'qa' | 'ai-polished'
+
+// 首次引导收集后的候选人画像
+export interface CandidateProfile {
+  basicInfo: CandidateBasicInfo
+  projectExperience: string
+  projectSource: ProjectExperienceSource
+  aiOptimizedAt?: number
+  updatedAt: number
+}
+
 // 简历数据类型定义（简化版）
 export interface PersonalInfo {
   name: string
