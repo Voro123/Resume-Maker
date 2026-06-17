@@ -37,13 +37,32 @@ export interface CandidateBasicInfo {
 // 项目经历来源
 export type ProjectExperienceSource = 'manual' | 'qa' | 'ai-polished'
 
+// 首次引导中收集的单个项目经历
+export interface CandidateProjectExperience {
+  id: string
+  name: string
+  dateRange: string
+  role: string
+  techStack: string
+  description: string
+  responsibilities: string
+  achievements: string
+  rawNotes: string
+  source: ProjectExperienceSource
+  aiOptimizedAt?: number
+}
+
 // 首次引导收集后的候选人画像
 export interface CandidateProfile {
   basicInfo: CandidateBasicInfo
-  projectExperience: string
-  projectSource: ProjectExperienceSource
-  aiOptimizedAt?: number
+  projects: CandidateProjectExperience[]
   updatedAt: number
+  /** @deprecated 兼容旧版本单段项目经历数据 */
+  projectExperience?: string
+  /** @deprecated 兼容旧版本单段项目经历来源 */
+  projectSource?: ProjectExperienceSource
+  /** @deprecated 兼容旧版本单段项目经历优化时间 */
+  aiOptimizedAt?: number
 }
 
 // 简历数据类型定义（简化版）
