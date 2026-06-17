@@ -1,9 +1,16 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
-import type { CandidateBasicInfo, CandidateProfile, ProjectExperienceSource } from '@/types/resume'
+import type {
+  CandidateBasicInfo,
+  CandidateProfile,
+  CandidateProjectExperience,
+  ProjectExperienceSource
+} from '@/types/resume'
 
 const STORAGE_KEY = 'resume-onboarding-profile'
 const COMPLETED_KEY = 'resume-onboarding-completed'
+
+const createId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 
 const createEmptyBasicInfo = (): CandidateBasicInfo => ({
   name: '',
@@ -17,11 +24,56 @@ const createEmptyBasicInfo = (): CandidateBasicInfo => ({
   selfSummary: ''
 })
 
+const createEmptyProject = (): CandidateProjectExperience => ({
+  id: createId(),
+  name: '',
+  dateRange: '',
+  role: '',
+  techStack: '',
+  description: '',
+  responsibilities: '',
+  achievements: '',
+  rawNotes: '',
+  source: 'manual'
+})
+
+const normalizeProject = (project: Partial<CandidateProjectExperience>): CandidateProjectExperience => ({
+  ...createEmptyProject(),
+  ...project,
+  id: project.id || createId(),
+  source: project.source || 'manual'
+})
+
+const migrateLegacyProfile = (profile: CandidateProfile): CandidateProfile => {
+  if (Array.isArray(profile.projects)) {
+    return {
+      ...profile,
+      projects: profile.projects.map(normalizeProject)
+    }
+  }
+
+  const legacyProject = profile.projectExperience?.trim()
+  return {
+    ...profile,
+    projects: legacyProject
+      ? [
+          normalizeProject({
+            name: '项目经历',
+            rawNotes: legacyProject,
+            description: legacyProject,
+            source: profile.projectSource || 'manual',
+            aiOptimizedAt: profile.aiOptimizedAt
+          })
+        ]
+      : []
+  }
+}
+
 const safeParseProfile = (raw: string | null): CandidateProfile | null => {
   if (!raw) return null
 
   try {
-    return JSON.parse(raw) as CandidateProfile
+    return migrateLegacyProfile(JSON.parse(raw) as CandidateProfile)
   } catch (error) {
     console.warn('读取首次引导信息失败:', error)
     return null
@@ -35,6 +87,21 @@ const compactLines = (lines: Array<[string, string]>) => {
     .join('\n')
 }
 
+const formatProjectForPrompt = (project: CandidateProjectExperience, index: number) => {
+  const projectBlock = compactLines([
+    ['项目名称', project.name || `项目 ${index + 1}`],
+    ['项目时间', project.dateRange],
+    ['担任角色', project.role],
+    ['技术栈', project.techStack],
+    ['项目简介', project.description],
+    ['负责内容', project.responsibilities],
+    ['项目成果/指标', project.achievements],
+    ['补充原始信息', project.rawNotes]
+  ])
+
+  return projectBlock ? `### 项目 ${index + 1}\n${projectBlock}` : ''
+}
+
 export const useOnboardingStore = defineStore('onboarding', () => {
   const profile = ref<CandidateProfile | null>(null)
   const isCompleted = ref(false)
@@ -44,17 +111,10 @@ export const useOnboardingStore = defineStore('onboarding', () => {
     isCompleted.value = localStorage.getItem(COMPLETED_KEY) === 'true'
   }
 
-  const saveProfile = (
-    basicInfo: CandidateBasicInfo,
-    projectExperience: string,
-    projectSource: ProjectExperienceSource = 'manual',
-    aiOptimizedAt?: number
-  ) => {
+  const saveProfile = (basicInfo: CandidateBasicInfo, projects: CandidateProjectExperience[]) => {
     const nextProfile: CandidateProfile = {
       basicInfo: { ...basicInfo },
-      projectExperience,
-      projectSource,
-      aiOptimizedAt,
+      projects: projects.map(normalizeProject),
       updatedAt: Date.now()
     }
 
@@ -64,15 +124,9 @@ export const useOnboardingStore = defineStore('onboarding', () => {
     localStorage.setItem(COMPLETED_KEY, 'true')
   }
 
-  const updateProjectExperience = (projectExperience: string, projectSource: ProjectExperienceSource) => {
+  const updateProjects = (projects: CandidateProjectExperience[]) => {
     if (!profile.value) return
-
-    saveProfile(
-      profile.value.basicInfo,
-      projectExperience,
-      projectSource,
-      projectSource === 'ai-polished' ? Date.now() : profile.value.aiOptimizedAt
-    )
+    saveProfile(profile.value.basicInfo, projects)
   }
 
   const markCompleted = () => {
@@ -90,7 +144,7 @@ export const useOnboardingStore = defineStore('onboarding', () => {
   const needsOnboarding = computed(() => !isCompleted.value)
 
   const hasProfile = computed(() => {
-    return Boolean(profile.value?.basicInfo.name || profile.value?.projectExperience)
+    return Boolean(profile.value?.basicInfo.name || profile.value?.projects?.some((project) => project.name || project.description || project.rawNotes))
   })
 
   const formattedPromptBlock = computed(() => {
@@ -115,8 +169,13 @@ export const useOnboardingStore = defineStore('onboarding', () => {
       sections.push(basicBlock)
     }
 
-    if (profile.value.projectExperience.trim()) {
-      sections.push(`\n## 项目经历\n${profile.value.projectExperience.trim()}`)
+    const projectBlocks = profile.value.projects
+      .map(formatProjectForPrompt)
+      .filter(Boolean)
+      .join('\n\n')
+
+    if (projectBlocks) {
+      sections.push(`\n## 项目经历\n${projectBlocks}`)
     }
 
     sections.push('\n请优先使用以上真实信息生成简历，不要随意编造与这些信息冲突的内容。对于信息缺失的模块，可以用更通用、可编辑的占位内容补齐。')
@@ -132,9 +191,10 @@ export const useOnboardingStore = defineStore('onboarding', () => {
     formattedPromptBlock,
     loadFromLocalStorage,
     saveProfile,
-    updateProjectExperience,
+    updateProjects,
     markCompleted,
     resetOnboarding,
-    createEmptyBasicInfo
+    createEmptyBasicInfo,
+    createEmptyProject
   }
 })
