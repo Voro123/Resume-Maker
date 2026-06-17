@@ -48,27 +48,16 @@
           <el-icon><Check /></el-icon>
           API 已配置 ({{ configForm.model }})
         </el-tag>
-        <el-button type="text" size="small" @click="handleResetConfig">修改配置</el-button>
+        <div class="config-actions">
+          <el-tooltip :content="onboardingStore.hasProfile ? '编辑候选人信息' : '填写候选人信息'" placement="top">
+            <el-button circle size="small" @click="handleOpenOnboarding" aria-label="编辑候选人信息">
+              <el-icon><Setting /></el-icon>
+            </el-button>
+          </el-tooltip>
+          <el-button type="text" size="small" @click="handleResetConfig">修改配置</el-button>
+        </div>
         
         <el-divider style="margin: 10px 0" />
-      </div>
-
-      <div v-if="isConfigured" class="profile-status">
-        <el-alert
-          :type="onboardingStore.hasProfile ? 'success' : 'info'"
-          :closable="false"
-          show-icon
-        >
-          <template #title>
-            <span v-if="onboardingStore.hasProfile">已带入首次引导填写的姓名、项目经历等信息</span>
-            <span v-else>尚未填写基础信息，生成时可能使用示例数据</span>
-          </template>
-          <template #default>
-            <el-button type="primary" link size="small" @click="handleOpenOnboarding">
-              {{ onboardingStore.hasProfile ? '重新填写' : '现在填写' }}
-            </el-button>
-          </template>
-        </el-alert>
       </div>
 
       <!-- 分类筛选（仅在已配置时显示） -->
@@ -130,7 +119,7 @@
 
         <div class="prompt-tip">
           <el-icon><InfoFilled /></el-icon>
-          您正在编辑的是简历的设计要求和内容模块，系统会自动组合固定指令和首次引导信息一起发送给AI。
+          您正在编辑的是简历的设计要求和内容模块，系统会自动组合固定指令和候选人信息一起发送给AI。
         </div>
       </div>
 
@@ -144,7 +133,7 @@
         />
         <div class="prompt-tip">
           <el-icon><InfoFilled /></el-icon>
-          提示：系统会自动添加输出格式要求和首次引导信息，您只需描述简历内容和风格。
+          提示：系统会自动添加输出格式要求和候选人信息，您只需描述简历内容和风格。
         </div>
       </div>
 
@@ -168,7 +157,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { MagicStick, Check, InfoFilled } from '@element-plus/icons-vue'
+import { MagicStick, Check, InfoFilled, Setting } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { promptTemplates, getCategories } from '@/config/promptTemplates'
 import { useResumeStore } from '@/stores/resume'
@@ -262,7 +251,7 @@ const appendProfilePrompt = (prompt: string) => {
   return `${prompt}\n\n${onboardingStore.formattedPromptBlock}`
 }
 
-// 生成简历 - 组合固定提示词、可编辑提示词和首次引导信息
+// 生成简历 - 组合固定提示词、可编辑提示词和候选人信息
 const handleGenerate = async () => {
   if (!canGenerate.value) {
     ElMessage.warning('请先选择或输入提示词')
@@ -375,6 +364,8 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
   
   .el-tag {
     display: flex;
@@ -383,14 +374,10 @@ onMounted(() => {
   }
 }
 
-.profile-status {
-  :deep(.el-alert__content) {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    width: 100%;
-    gap: 8px;
-  }
+.config-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .category-tabs {
