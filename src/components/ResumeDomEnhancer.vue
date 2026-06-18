@@ -40,7 +40,7 @@ const pxToNumber = (value: string) => Number.parseFloat(value || '0') || 0
 const stripCssContentQuotes = (value: string) => {
   if (!value || value === 'none' || value === 'normal' || value === '""') return ''
   return value
-    .replace(/^['"]|['"]$/g, '')
+    .replace(/^[\'"]|[\'"]$/g, '')
     .replace(/\\([0-9a-fA-F]{1,6})\s?/g, (_, hex) => String.fromCodePoint(Number.parseInt(hex, 16)))
 }
 
@@ -444,6 +444,10 @@ watch(
 </style>
 
 <style lang="scss">
+.reasoning-panel {
+  display: none !important;
+}
+
 .resume-content {
   .resume-avatar-placeholder,
   .resume-avatar-upload-target {
