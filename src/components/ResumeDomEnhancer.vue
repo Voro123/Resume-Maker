@@ -27,6 +27,7 @@ const AVATAR_KEYWORDS = [
   'headshot',
   'profile-img',
   'profile-image',
+  'resume-avatar-placeholder',
   '个人照片',
   '头像',
   '照片'
@@ -35,13 +36,13 @@ const AVATAR_KEYWORDS = [
 const BULLET_CHARS = ['•', '·', '●', '○', '▪', '▫', '◦', '◆', '◇', '-', '–']
 
 const normalizeText = (value: string | null | undefined) => (value || '').toLowerCase()
+const pxToNumber = (value: string) => Number.parseFloat(value || '0') || 0
 
 const hasAvatarKeyword = (el: Element) => {
   const attrs = [
     el.className?.toString(),
     el.id,
     el.getAttribute('alt'),
-    el.getAttribute('title'),
     el.getAttribute('aria-label'),
     el.getAttribute('data-role')
   ]
@@ -94,22 +95,79 @@ const isLikelyAvatarElement = (el: HTMLElement) => {
   return isAvatarLikeBlock && Boolean(el.closest('.resume-container'))
 }
 
-const markAvatarTarget = (el: HTMLElement) => {
-  el.classList.add('resume-avatar-upload-target')
+const ensureAvatarBadge = (target: HTMLElement) => {
+  if (target.querySelector(':scope > .resume-avatar-upload-badge')) return
+
+  const badge = document.createElement('span')
+  badge.className = 'resume-avatar-upload-badge'
+  badge.textContent = '上传头像'
+  target.appendChild(badge)
+}
+
+const markAvatarShell = (el: HTMLElement) => {
+  el.classList.add('resume-avatar-placeholder', 'resume-avatar-upload-target')
   el.setAttribute('data-resume-avatar-upload', 'true')
-  el.setAttribute('title', '点击上传头像')
+  el.removeAttribute('title')
 
   const style = window.getComputedStyle(el)
   if (style.position === 'static') {
     el.style.position = 'relative'
   }
+
+  ensureAvatarBadge(el)
+}
+
+const wrapAvatarImage = (img: HTMLImageElement) => {
+  const parent = img.parentElement
+  if (!parent) return img
+
+  const existingShell = img.closest<HTMLElement>('.resume-avatar-placeholder, [data-resume-avatar-upload="true"]')
+  if (existingShell) {
+    markAvatarShell(existingShell)
+    return existingShell
+  }
+
+  const rect = img.getBoundingClientRect()
+  const computed = window.getComputedStyle(img)
+  const shell = document.createElement('span')
+  shell.className = 'resume-avatar-placeholder resume-avatar-upload-target'
+  shell.setAttribute('data-resume-avatar-upload', 'true')
+  shell.style.width = img.style.width || computed.width || `${Math.max(rect.width, 72)}px`
+  shell.style.height = img.style.height || computed.height || `${Math.max(rect.height, 72)}px`
+  shell.style.borderRadius = img.style.borderRadius || computed.borderRadius || '50%'
+  shell.style.display = computed.display === 'block' ? 'block' : 'inline-flex'
+  shell.style.position = 'relative'
+  shell.style.overflow = 'hidden'
+
+  parent.insertBefore(shell, img)
+  shell.appendChild(img)
+
+  img.classList.add('resume-avatar-image')
+  img.removeAttribute('title')
+  img.style.width = '100%'
+  img.style.height = '100%'
+  img.style.objectFit = 'cover'
+  img.style.display = 'block'
+  img.style.borderRadius = 'inherit'
+
+  ensureAvatarBadge(shell)
+  return shell
+}
+
+const markAvatarTarget = (el: HTMLElement) => {
+  if (el.tagName.toLowerCase() === 'img') {
+    wrapAvatarImage(el as HTMLImageElement)
+    return
+  }
+
+  markAvatarShell(el)
 }
 
 const enhanceAvatarTargets = () => {
   const container = getResumeContainer()
   if (!container) return
 
-  const candidates = Array.from(container.querySelectorAll<HTMLElement>('img, [class*="avatar" i], [class*="photo" i], [class*="portrait" i], [class*="headshot" i], [id*="avatar" i], [id*="photo" i]'))
+  const candidates = Array.from(container.querySelectorAll<HTMLElement>('img, .resume-avatar-placeholder, [data-resume-avatar-upload="true"], [class*="avatar" i], [class*="photo" i], [class*="portrait" i], [class*="headshot" i], [id*="avatar" i], [id*="photo" i]'))
   candidates.filter(isLikelyAvatarElement).forEach(markAvatarTarget)
 }
 
@@ -190,9 +248,38 @@ const normalizeCustomBulletLists = () => {
   })
 }
 
+const normalizeBeforeMarkers = () => {
+  const container = getResumeContainer()
+  if (!container) return
+
+  container.querySelectorAll<HTMLElement>('section, article, div, li').forEach((el) => {
+    if (el.classList.contains('resume-avatar-placeholder')) return
+
+    const before = window.getComputedStyle(el, '::before')
+    const hasBeforeContent = before.content && before.content !== 'none' && before.content !== 'normal' && before.content !== '""'
+    const beforeLooksLikeMarker =
+      hasBeforeContent ||
+      (before.position === 'absolute' && pxToNumber(before.width) <= 18 && pxToNumber(before.height) <= 18)
+
+    if (!beforeLooksLikeMarker) return
+
+    const left = pxToNumber(before.left)
+    const width = pxToNumber(before.width)
+    const paddingLeft = pxToNumber(window.getComputedStyle(el).paddingLeft)
+    const needsExtraSpace = before.position === 'absolute' && left <= 12 && width <= 18 && paddingLeft < 24
+
+    if (!needsExtraSpace) return
+
+    el.classList.add('resume-safe-before-marker')
+    el.style.position = window.getComputedStyle(el).position === 'static' ? 'relative' : el.style.position
+    el.style.paddingLeft = `${Math.max(28, paddingLeft)}px`
+  })
+}
+
 const enhanceListLayout = () => {
   normalizeNativeLists()
   normalizeCustomBulletLists()
+  normalizeBeforeMarkers()
 }
 
 const enhanceResumeDom = () => {
@@ -227,15 +314,22 @@ const replaceAvatarTargetImage = (dataUrl: string) => {
   const target = currentAvatarTarget.value
   if (!target) return
 
-  if (target.tagName.toLowerCase() === 'img') {
-    const img = target as HTMLImageElement
+  const img = target.tagName.toLowerCase() === 'img'
+    ? (target as HTMLImageElement)
+    : target.querySelector<HTMLImageElement>('img')
+
+  if (img) {
     img.src = dataUrl
     img.removeAttribute('srcset')
+    img.classList.add('resume-avatar-image')
   } else {
     target.style.backgroundImage = `url("${dataUrl}")`
     target.style.backgroundSize = 'cover'
     target.style.backgroundPosition = 'center'
-    target.textContent = ''
+    Array.from(target.childNodes).forEach((node) => {
+      if ((node as HTMLElement).classList?.contains('resume-avatar-upload-badge')) return
+      node.remove()
+    })
   }
 
   saveCurrentResumeHtml()
@@ -323,42 +417,56 @@ watch(
 
 <style lang="scss">
 .resume-content {
+  .resume-avatar-placeholder,
   .resume-avatar-upload-target {
     cursor: pointer !important;
     overflow: hidden;
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    min-width: 64px;
+    min-height: 64px;
+    background: rgba(255, 255, 255, 0.08);
     transition: box-shadow 0.2s ease, outline 0.2s ease, filter 0.2s ease;
 
     &:hover {
       outline: 2px dashed #409eff !important;
-      outline-offset: 3px !important;
-      filter: brightness(0.96);
-    }
-
-    &::after {
-      content: '点击上传头像';
-      position: absolute;
-      left: 50%;
-      bottom: 6px;
-      transform: translateX(-50%);
-      padding: 3px 7px;
-      border-radius: 999px;
-      background: rgba(17, 24, 39, 0.78);
-      color: #fff;
-      font-size: 10px;
-      line-height: 1.2;
-      white-space: nowrap;
-      opacity: 0;
-      pointer-events: none;
-      transition: opacity 0.2s ease;
-    }
-
-    &:hover::after {
-      opacity: 1;
+      outline-offset: 4px !important;
+      filter: brightness(0.98);
     }
   }
 
-  img.resume-avatar-upload-target {
-    object-fit: cover;
+  .resume-avatar-image,
+  .resume-avatar-placeholder > img {
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: cover !important;
+    display: block !important;
+    border-radius: inherit !important;
+  }
+
+  .resume-avatar-upload-badge {
+    position: absolute;
+    right: 6px;
+    bottom: 6px;
+    z-index: 2;
+    padding: 3px 7px;
+    border-radius: 999px;
+    background: rgba(17, 24, 39, 0.78);
+    color: #fff;
+    font-size: 10px;
+    line-height: 1.2;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+  }
+
+  .resume-avatar-placeholder:hover > .resume-avatar-upload-badge,
+  .resume-avatar-upload-target:hover > .resume-avatar-upload-badge {
+    opacity: 1;
   }
 
   ul.resume-safe-list,
@@ -400,13 +508,21 @@ watch(
     text-indent: 0 !important;
     line-height: 1.55 !important;
   }
+
+  .resume-safe-before-marker {
+    text-indent: 0 !important;
+    overflow: visible !important;
+  }
 }
 
 .exporting-pdf {
-  .resume-content .resume-avatar-upload-target {
-    outline: none !important;
+  .resume-content {
+    .resume-avatar-placeholder,
+    .resume-avatar-upload-target {
+      outline: none !important;
+    }
 
-    &::after {
+    .resume-avatar-upload-badge {
       display: none !important;
     }
   }
