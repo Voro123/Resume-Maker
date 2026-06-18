@@ -2,6 +2,7 @@
   <div class="editor-container" :class="{ 'exporting-pdf': isExporting }">
     <OnboardingDialog />
     <ResumeDomEnhancer />
+    <ResumeSelectionFormatToolbar />
 
     <!-- 左侧：提示词输入 -->
     <div class="editor-left" :class="{ 'collapsed': leftCollapsed }">
@@ -67,6 +68,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import PromptTemplateSelector from '@/components/PromptTemplateSelector.vue'
 import ResumePreview from '@/components/ResumePreview.vue'
 import ResumeDomEnhancer from '@/components/ResumeDomEnhancer.vue'
+import ResumeSelectionFormatToolbar from '@/components/ResumeSelectionFormatToolbar.vue'
 import ChatPanel from '@/components/ChatPanel.vue'
 import OnboardingDialog from '@/components/OnboardingDialog.vue'
 import { generatePDF } from '@/utils/pdf'
@@ -293,7 +295,8 @@ const handleCopyHTML = async () => {
   // 隐藏编辑提示、选择提示和分页线（使用深度选择器覆盖scoped样式）
   :deep(.edit-tip),
   :deep(.select-tip),
-  :deep(.page-break-line) {
+  :deep(.page-break-line),
+  :deep(.resume-selection-format-toolbar) {
     display: none !important;
   }
   
