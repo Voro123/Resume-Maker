@@ -87,9 +87,24 @@ const compactLines = (lines: Array<[string, string]>) => {
     .join('\n')
 }
 
+const hasProjectContent = (project: CandidateProjectExperience) => {
+  return Boolean(
+    project.name.trim() ||
+      project.dateRange.trim() ||
+      project.role.trim() ||
+      project.techStack.trim() ||
+      project.description.trim() ||
+      project.responsibilities.trim() ||
+      project.achievements.trim() ||
+      project.rawNotes.trim()
+  )
+}
+
 const formatProjectForPrompt = (project: CandidateProjectExperience, index: number) => {
+  if (!hasProjectContent(project)) return ''
+
   const projectBlock = compactLines([
-    ['项目名称', project.name || `项目 ${index + 1}`],
+    ['项目名称', project.name],
     ['项目时间', project.dateRange],
     ['担任角色', project.role],
     ['技术栈', project.techStack],
@@ -99,7 +114,7 @@ const formatProjectForPrompt = (project: CandidateProjectExperience, index: numb
     ['补充原始信息', project.rawNotes]
   ])
 
-  return projectBlock ? `### 项目 ${index + 1}\n${projectBlock}` : ''
+  return projectBlock ? `### 用户填写的项目 ${index + 1}\n${projectBlock}` : ''
 }
 
 export const useOnboardingStore = defineStore('onboarding', () => {
@@ -163,9 +178,13 @@ export const useOnboardingStore = defineStore('onboarding', () => {
       ['个人总结', basic.selfSummary]
     ])
 
-    const sections = ['## 候选人基础信息']
+    const sections = [
+      '## 用户已填写的真实信息',
+      '以下内容是用户明确提供的信息。只能基于这些事实生成简历，可以润色表达，但不能新增事实。未填写的姓名、联系方式、链接、公司、学校、经历、项目、成果、指标等一律不要编造。'
+    ]
 
     if (basicBlock) {
+      sections.push('\n### 基础信息')
       sections.push(basicBlock)
     }
 
@@ -175,10 +194,10 @@ export const useOnboardingStore = defineStore('onboarding', () => {
       .join('\n\n')
 
     if (projectBlocks) {
-      sections.push(`\n## 项目经历\n${projectBlocks}`)
+      sections.push(`\n### 用户填写的项目经历\n${projectBlocks}`)
     }
 
-    sections.push('\n请优先使用以上真实信息生成简历，不要随意编造与这些信息冲突的内容。对于信息缺失的模块，可以用更通用、可编辑的占位内容补齐。')
+    sections.push('\n## 事实使用规则\n- 必须优先使用以上用户真实信息。\n- 严禁生成用户未提供的 GitHub、个人网站、邮箱、电话、公司、学校、证书、奖项、工作经历、项目经历、项目名称、项目时间、项目成果或量化指标。\n- 信息缺失时请省略对应模块，或在必要位置写“待补充”；不要用示例信息、虚构链接或虚构经历补齐。\n- 可以对用户已提供的项目职责和成果进行语言润色，但不得新增未提供的项目背景、技术栈、指标或结果。')
 
     return sections.join('\n')
   })
