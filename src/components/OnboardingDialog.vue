@@ -282,6 +282,12 @@
           </div>
         </div>
       </el-tab-pane>
+
+      <el-tab-pane label="配置迁移" name="backup">
+        <div class="dialog-body backup-settings-body">
+          <ConfigBackupPanel @imported="handleConfigImported" />
+        </div>
+      </el-tab-pane>
     </el-tabs>
 
     <template #footer>
@@ -294,7 +300,7 @@
         </div>
       </div>
       <div v-else class="dialog-footer api-footer">
-        <span class="tip-text">保存后主界面会自动刷新 API 配置状态。</span>
+        <span class="tip-text">{{ activeSettingsTab === 'api' ? '保存后主界面会自动刷新 API 配置状态。' : '导入配置后会自动刷新本页已保存的信息。' }}</span>
         <el-button @click="visible = false">关闭</el-button>
       </div>
     </template>
@@ -306,14 +312,17 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { Check, Delete, MagicStick, Plus } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import type { CandidateBasicInfo, CandidateProjectExperience } from '@/types/resume'
+import ConfigBackupPanel from '@/components/ConfigBackupPanel.vue'
 import { generateResumeDataViaBackend } from '@/utils/backend-api'
 import { useOnboardingStore } from '@/stores/onboarding'
 
 const onboardingStore = useOnboardingStore()
 const API_CONFIG_KEY = 'chat-api-config'
 
+type SettingsTab = 'api' | 'profile' | 'backup'
+
 const visible = ref(false)
-const activeSettingsTab = ref<'api' | 'profile'>('profile')
+const activeSettingsTab = ref<SettingsTab>('api')
 const activeStep = ref(0)
 const projectMode = ref<'qa' | 'manual'>('qa')
 const currentQuestionIndex = ref(0)
@@ -469,14 +478,24 @@ const restoreProfile = () => {
   activeProjectId.value = projects.value[0].id
 }
 
-const openDialog = (event?: Event) => {
-  const detail = (event as CustomEvent<{ tab?: 'api' | 'profile' }>)?.detail
+const reloadSavedSettings = () => {
   onboardingStore.loadFromLocalStorage()
   loadApiConfig()
   restoreProfile()
+  ensureProject()
+}
+
+const openDialog = (event?: Event) => {
+  const detail = (event as CustomEvent<{ tab?: SettingsTab }>)?.detail
+  reloadSavedSettings()
   activeStep.value = 0
-  activeSettingsTab.value = detail?.tab || 'profile'
+  activeSettingsTab.value = detail?.tab || 'api'
   visible.value = true
+}
+
+const handleConfigImported = () => {
+  reloadSavedSettings()
+  notifyApiConfigChanged()
 }
 
 const addProject = () => {
@@ -638,12 +657,9 @@ const handleSkip = () => {
 }
 
 onMounted(() => {
-  onboardingStore.loadFromLocalStorage()
-  loadApiConfig()
-  restoreProfile()
-  ensureProject()
+  reloadSavedSettings()
   visible.value = onboardingStore.needsOnboarding
-  activeSettingsTab.value = 'profile'
+  activeSettingsTab.value = 'api'
   window.addEventListener('resume-open-onboarding', openDialog)
 })
 
@@ -664,6 +680,10 @@ onBeforeUnmount(() => {
 
 .api-settings-body {
   min-height: 280px;
+}
+
+.backup-settings-body {
+  min-height: 360px;
 }
 
 .api-config-form {
