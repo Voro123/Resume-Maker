@@ -3,7 +3,6 @@
     <OnboardingDialog />
     <ResumeDomEnhancer />
     <ResumeSelectionFormatToolbar />
-    <DevGitPullButton />
 
     <!-- 左侧：提示词输入 -->
     <div class="editor-left" :class="{ 'collapsed': leftCollapsed }">
@@ -24,8 +23,9 @@
 
     <!-- 中间：简历预览 -->
     <div class="editor-center">
-      <div class="panel-header">
+      <div class="panel-header preview-header">
         <h2>实时预览</h2>
+        <DevGitPullButton />
         <div class="header-actions">
           <el-button type="primary" @click="handleExportPDF">
             <el-icon><Download /></el-icon>
@@ -240,9 +240,18 @@ const handleCopyHTML = async () => {
   }
 }
 
+.preview-header {
+  gap: 12px;
+
+  h2 {
+    flex-shrink: 0;
+  }
+}
+
 .header-actions {
   display: flex;
   gap: 10px;
+  margin-left: auto;
 }
 
 .collapse-btn {
