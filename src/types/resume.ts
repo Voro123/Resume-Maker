@@ -40,6 +40,8 @@ export type ProjectExperienceSource = 'manual' | 'qa' | 'ai-polished'
 // 首次引导中收集的单个项目经历
 export interface CandidateProjectExperience {
   id: string
+  company: string
+  department: string
   name: string
   dateRange: string
   role: string
