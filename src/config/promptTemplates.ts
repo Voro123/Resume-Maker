@@ -14,9 +14,10 @@ const COMMON_FIXED_PROMPT = `你是一位专业的前端开发和简历设计专
 8. 配色专业、印刷友好（避免渐变、阴影等印刷效果不佳的效果）
 9. 输出格式：只返回HTML代码，不要添加任何解释、注释或markdown代码块标记
 10. ⚠️ 禁止在 body 或外层容器（如 .page-wrapper、.resume-container 等）设置 padding 或 margin，内容区域必须紧贴页面边缘，由内部元素自行控制间距
-11. 如需头像，请输出独立头像占位壳层：<div class="resume-avatar-placeholder avatar" data-resume-avatar-upload="true"><span class="avatar-icon">头像</span></div>。不要在头像内部写“点击上传头像/替换”等操作文案；上传按钮由外部 CSS 注入
+11. 如需头像，请输出独立头像占位壳层：<div class="resume-avatar-placeholder avatar" data-resume-avatar-upload="true"></div>。头像内部不要写任何“头像/点击上传头像/替换”等文字；上传入口由外部 CSS 注入
 12. 列表必须使用标准 <ul>/<ol>/<li>，并设置 list-style-position: outside、ul/ol padding-left 至少 1.4em、li 不要使用负 text-indent，禁止让列表符号和文字重叠
-13. 如果使用时间线圆点、项目圆点或伪元素 marker，内容容器必须预留至少 28px 左侧空间，避免圆点压住文字`
+13. 如果使用 ::before 插入“技术栈：/核心能力：/成果：”等标签文案，必须为正文设置足够 padding-left（至少 标签宽度 + 10px），禁止让 ::before 文案与正文重叠
+14. 如果使用时间线圆点、项目圆点或伪元素 marker，内容容器必须预留至少 28px 左侧空间，避免圆点压住文字`
 
 // 预设提示词模板
 export const promptTemplates: PromptTemplate[] = [
