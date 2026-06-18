@@ -32,6 +32,8 @@ const AVATAR_KEYWORDS = [
   '照片'
 ]
 
+const BULLET_CHARS = ['•', '·', '●', '○', '▪', '▫', '◦', '◆', '◇', '-', '–']
+
 const normalizeText = (value: string | null | undefined) => (value || '').toLowerCase()
 
 const hasAvatarKeyword = (el: Element) => {
@@ -132,20 +134,45 @@ const normalizeNativeLists = () => {
   })
 }
 
+const getLeadingBullet = (text: string) => {
+  const trimmed = text.trimStart()
+  const firstChar = trimmed.charAt(0)
+  return BULLET_CHARS.includes(firstChar) ? firstChar : ''
+}
+
+const splitLeadingBulletTextNode = (block: HTMLElement) => {
+  if (block.querySelector(':scope > .resume-safe-inline-marker')) return
+
+  const firstTextNode = Array.from(block.childNodes).find((node) => {
+    return node.nodeType === Node.TEXT_NODE && Boolean(node.textContent?.trim())
+  }) as Text | undefined
+
+  if (!firstTextNode?.textContent) return
+
+  const bullet = getLeadingBullet(firstTextNode.textContent)
+  if (!bullet) return
+
+  firstTextNode.textContent = firstTextNode.textContent.replace(/^\s*[•·●○▪▫◦◆◇\-–]\s*/, '')
+
+  const marker = document.createElement('span')
+  marker.className = 'resume-safe-inline-marker'
+  marker.textContent = bullet
+  block.insertBefore(marker, firstTextNode)
+}
+
 const normalizeCustomBulletLists = () => {
   const container = getResumeContainer()
   if (!container) return
-
-  const bulletChars = ['•', '·', '●', '○', '▪', '▫', '◦', '◆', '◇', '-', '–']
 
   container.querySelectorAll<HTMLElement>('p, div').forEach((block) => {
     if (block.closest('li')) return
 
     const text = block.textContent?.trim() || ''
-    const firstChar = text.charAt(0)
-    if (!bulletChars.includes(firstChar)) return
+    const bullet = getLeadingBullet(text)
+    if (!bullet) return
 
     block.classList.add('resume-safe-custom-bullet')
+    splitLeadingBulletTextNode(block)
 
     if (!block.style.display || block.style.display === 'block') {
       block.style.display = 'flex'
@@ -157,7 +184,7 @@ const normalizeCustomBulletLists = () => {
 
   container.querySelectorAll<HTMLElement>('li > span:first-child, li > i:first-child, li > b:first-child, li > strong:first-child').forEach((marker) => {
     const text = marker.textContent?.trim() || ''
-    if (!bulletChars.includes(text) && text.length > 2) return
+    if (!BULLET_CHARS.includes(text) && text.length > 2) return
 
     marker.classList.add('resume-safe-inline-marker')
   })
