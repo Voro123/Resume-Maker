@@ -27,7 +27,6 @@
       <div class="panel-header preview-header">
         <h2>实时预览</h2>
         <DevGitPullButton />
-        <ConfigBackupButton />
         <div class="header-actions">
           <el-button type="primary" @click="handleExportPDF">
             <el-icon><Download /></el-icon>
@@ -74,7 +73,6 @@ import ResumeDomEnhancer from '@/components/ResumeDomEnhancer.vue'
 import ResumeSelectionFormatToolbar from '@/components/ResumeSelectionFormatToolbar.vue'
 import ResumeElementSelectorLayer from '@/components/ResumeElementSelectorLayer.vue'
 import DevGitPullButton from '@/components/DevGitPullButton.vue'
-import ConfigBackupButton from '@/components/ConfigBackupButton.vue'
 import ChatPanel from '@/components/ChatPanel.vue'
 import OnboardingDialog from '@/components/OnboardingDialog.vue'
 import { generatePDF } from '@/utils/pdf'
@@ -312,8 +310,7 @@ const handleCopyHTML = async () => {
   :deep(.select-tip),
   :deep(.page-break-line),
   :deep(.resume-selection-format-toolbar),
-  :deep(.dev-git-pull-button),
-  :deep(.config-backup-button) {
+  :deep(.dev-git-pull-button) {
     display: none !important;
   }
   
