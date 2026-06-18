@@ -16,9 +16,7 @@ import { useResumeStore } from '@/stores/resume'
 const resumeStore = useResumeStore()
 const fileInputRef = ref<HTMLInputElement>()
 const currentAvatarTarget = ref<HTMLElement | null>(null)
-let observer: MutationObserver | null = null
 let enhanceTimer: number | null = null
-let isSavingEnhancedDom = false
 
 const AVATAR_KEYWORDS = [
   'avatar',
@@ -34,9 +32,28 @@ const AVATAR_KEYWORDS = [
 ]
 
 const BULLET_CHARS = ['•', '·', '●', '○', '▪', '▫', '◦', '◆', '◇', '-', '–']
+const UPLOAD_TEXT_REGEXP = /点击|上传|替换|头像|照片/g
 
 const normalizeText = (value: string | null | undefined) => (value || '').toLowerCase()
 const pxToNumber = (value: string) => Number.parseFloat(value || '0') || 0
+
+const stripCssContentQuotes = (value: string) => {
+  if (!value || value === 'none' || value === 'normal' || value === '""') return ''
+  return value
+    .replace(/^['"]|['"]$/g, '')
+    .replace(/\\([0-9a-fA-F]{1,6})\s?/g, (_, hex) => String.fromCodePoint(Number.parseInt(hex, 16)))
+}
+
+const measureTextWidth = (text: string, style: CSSStyleDeclaration) => {
+  if (!text) return 0
+
+  const canvas = document.createElement('canvas')
+  const context = canvas.getContext('2d')
+  if (!context) return text.length * pxToNumber(style.fontSize || '14px')
+
+  context.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`
+  return context.measureText(text).width
+}
 
 const hasAvatarKeyword = (el: Element) => {
   const attrs = [
@@ -60,11 +77,7 @@ const saveCurrentResumeHtml = () => {
   const content = getResumeContent()
   if (!content) return
 
-  isSavingEnhancedDom = true
   resumeStore.updateGeneratedHTML(content.innerHTML)
-  window.setTimeout(() => {
-    isSavingEnhancedDom = false
-  }, 0)
 }
 
 const isLikelyAvatarElement = (el: HTMLElement) => {
@@ -95,12 +108,42 @@ const isLikelyAvatarElement = (el: HTMLElement) => {
   return isAvatarLikeBlock && Boolean(el.closest('.resume-container'))
 }
 
+const cleanAvatarPlaceholderContent = (target: HTMLElement) => {
+  const hasImage = Boolean(target.querySelector('img'))
+  if (hasImage) return
+
+  Array.from(target.childNodes).forEach((node) => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      const text = node.textContent || ''
+      if (!text.trim() || UPLOAD_TEXT_REGEXP.test(text)) {
+        node.remove()
+      }
+      return
+    }
+
+    const el = node as HTMLElement
+    if (el.classList?.contains('resume-avatar-upload-badge')) return
+
+    const text = el.textContent?.trim() || ''
+    const isUploadHint = UPLOAD_TEXT_REGEXP.test(text)
+    const isIconLike = el.classList?.contains('avatar-icon') || el.classList?.contains('resume-avatar-icon')
+
+    if (isUploadHint || isIconLike) {
+      el.remove()
+    }
+  })
+}
+
 const ensureAvatarBadge = (target: HTMLElement) => {
-  if (target.querySelector(':scope > .resume-avatar-upload-badge')) return
+  const existing = target.querySelector<HTMLElement>(':scope > .resume-avatar-upload-badge')
+  if (existing) {
+    existing.textContent = '📷'
+    return
+  }
 
   const badge = document.createElement('span')
   badge.className = 'resume-avatar-upload-badge'
-  badge.textContent = '上传头像'
+  badge.textContent = '📷'
   target.appendChild(badge)
 }
 
@@ -114,6 +157,7 @@ const markAvatarShell = (el: HTMLElement) => {
     el.style.position = 'relative'
   }
 
+  cleanAvatarPlaceholderContent(el)
   ensureAvatarBadge(el)
 }
 
@@ -252,27 +296,31 @@ const normalizeBeforeMarkers = () => {
   const container = getResumeContainer()
   if (!container) return
 
-  container.querySelectorAll<HTMLElement>('section, article, div, li').forEach((el) => {
+  container.querySelectorAll<HTMLElement>('section, article, div, li, p').forEach((el) => {
     if (el.classList.contains('resume-avatar-placeholder')) return
 
     const before = window.getComputedStyle(el, '::before')
-    const hasBeforeContent = before.content && before.content !== 'none' && before.content !== 'normal' && before.content !== '""'
-    const beforeLooksLikeMarker =
-      hasBeforeContent ||
-      (before.position === 'absolute' && pxToNumber(before.width) <= 18 && pxToNumber(before.height) <= 18)
+    const content = stripCssContentQuotes(before.content)
+    const beforeWidth = pxToNumber(before.width)
+    const beforeHeight = pxToNumber(before.height)
+    const hasTextLabel = Boolean(content && !BULLET_CHARS.includes(content) && content.length <= 12)
+    const beforeLooksLikeDot = before.position === 'absolute' && beforeWidth <= 18 && beforeHeight <= 18
 
-    if (!beforeLooksLikeMarker) return
+    if (!hasTextLabel && !beforeLooksLikeDot) return
 
+    const elementStyle = window.getComputedStyle(el)
     const left = pxToNumber(before.left)
-    const width = pxToNumber(before.width)
-    const paddingLeft = pxToNumber(window.getComputedStyle(el).paddingLeft)
-    const needsExtraSpace = before.position === 'absolute' && left <= 12 && width <= 18 && paddingLeft < 24
+    const paddingLeft = pxToNumber(elementStyle.paddingLeft)
+    const labelWidth = hasTextLabel ? measureTextWidth(content, before) : beforeWidth
+    const requiredPadding = Math.ceil(Math.max(28, left + labelWidth + 10))
 
-    if (!needsExtraSpace) return
+    if (paddingLeft >= requiredPadding) return
 
     el.classList.add('resume-safe-before-marker')
-    el.style.position = window.getComputedStyle(el).position === 'static' ? 'relative' : el.style.position
-    el.style.paddingLeft = `${Math.max(28, paddingLeft)}px`
+    if (elementStyle.position === 'static') {
+      el.style.position = 'relative'
+    }
+    el.style.paddingLeft = `${requiredPadding}px`
   })
 }
 
@@ -326,10 +374,7 @@ const replaceAvatarTargetImage = (dataUrl: string) => {
     target.style.backgroundImage = `url("${dataUrl}")`
     target.style.backgroundSize = 'cover'
     target.style.backgroundPosition = 'center'
-    Array.from(target.childNodes).forEach((node) => {
-      if ((node as HTMLElement).classList?.contains('resume-avatar-upload-badge')) return
-      node.remove()
-    })
+    cleanAvatarPlaceholderContent(target)
   }
 
   saveCurrentResumeHtml()
@@ -360,35 +405,16 @@ const handleAvatarFileChange = (event: Event) => {
   reader.readAsDataURL(file)
 }
 
-const setupObserver = () => {
-  const content = getResumeContent()
-  if (!content) return
-
-  observer?.disconnect()
-  observer = new MutationObserver(() => {
-    if (isSavingEnhancedDom) return
-    scheduleEnhance()
-  })
-  observer.observe(content, {
-    childList: true,
-    subtree: true
-  })
-
-  content.removeEventListener('click', handleResumeClick, true)
-  content.addEventListener('click', handleResumeClick, true)
-}
-
 onMounted(() => {
   nextTick(() => {
-    setupObserver()
     enhanceResumeDom()
+    const content = getResumeContent()
+    content?.removeEventListener('click', handleResumeClick, true)
+    content?.addEventListener('click', handleResumeClick, true)
   })
 })
 
 onUnmounted(() => {
-  observer?.disconnect()
-  observer = null
-
   const content = getResumeContent()
   content?.removeEventListener('click', handleResumeClick, true)
 
@@ -402,8 +428,10 @@ watch(
   () => resumeStore.generatedHTML,
   () => {
     nextTick(() => {
-      setupObserver()
       enhanceResumeDom()
+      const content = getResumeContent()
+      content?.removeEventListener('click', handleResumeClick, true)
+      content?.addEventListener('click', handleResumeClick, true)
     })
   }
 )
@@ -438,6 +466,10 @@ watch(
     }
   }
 
+  .resume-avatar-placeholder::before {
+    content: '' !important;
+  }
+
   .resume-avatar-image,
   .resume-avatar-placeholder > img {
     width: 100% !important;
@@ -449,16 +481,19 @@ watch(
 
   .resume-avatar-upload-badge {
     position: absolute;
-    right: 6px;
-    bottom: 6px;
+    right: 8px;
+    bottom: 8px;
     z-index: 2;
-    padding: 3px 7px;
+    width: 24px;
+    height: 24px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     border-radius: 999px;
     background: rgba(17, 24, 39, 0.78);
     color: #fff;
-    font-size: 10px;
-    line-height: 1.2;
-    white-space: nowrap;
+    font-size: 13px;
+    line-height: 1;
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.2s ease;
