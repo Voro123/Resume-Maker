@@ -3,6 +3,7 @@
     <OnboardingDialog />
     <ResumeDomEnhancer />
     <ResumeSelectionFormatToolbar />
+    <DevGitPullButton />
 
     <!-- 左侧：提示词输入 -->
     <div class="editor-left" :class="{ 'collapsed': leftCollapsed }">
@@ -69,6 +70,7 @@ import PromptTemplateSelector from '@/components/PromptTemplateSelector.vue'
 import ResumePreview from '@/components/ResumePreview.vue'
 import ResumeDomEnhancer from '@/components/ResumeDomEnhancer.vue'
 import ResumeSelectionFormatToolbar from '@/components/ResumeSelectionFormatToolbar.vue'
+import DevGitPullButton from '@/components/DevGitPullButton.vue'
 import ChatPanel from '@/components/ChatPanel.vue'
 import OnboardingDialog from '@/components/OnboardingDialog.vue'
 import { generatePDF } from '@/utils/pdf'
@@ -296,7 +298,8 @@ const handleCopyHTML = async () => {
   :deep(.edit-tip),
   :deep(.select-tip),
   :deep(.page-break-line),
-  :deep(.resume-selection-format-toolbar) {
+  :deep(.resume-selection-format-toolbar),
+  :deep(.dev-git-pull-button) {
     display: none !important;
   }
   
