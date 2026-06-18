@@ -67,19 +67,9 @@ const reloadPage = () => {
 
 <style scoped lang="scss">
 .dev-git-pull-button {
-  position: fixed;
-  left: 50%;
-  bottom: 14px;
-  z-index: 3000;
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 10px;
-  border: 1px solid #dcdfe6;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.92);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
-  transform: translateX(-50%);
-  backdrop-filter: blur(8px);
+  flex-shrink: 0;
 }
 </style>
