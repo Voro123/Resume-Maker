@@ -125,7 +125,7 @@
                   v-for="(project, index) in projects"
                   :key="project.id"
                   :name="project.id"
-                  :label="project.name || `项目 ${index + 1}`"
+                  :label="project.name || project.company || `项目 ${index + 1}`"
                 />
               </el-tabs>
               <div class="project-toolbar-actions">
@@ -154,7 +154,7 @@
             <div v-if="projectMode === 'qa'" class="qa-panel">
               <div class="question-card">
                 <div class="question-index">
-                  当前项目：{{ currentProject.name || currentProjectLabel }} · 问题 {{ currentQuestionIndex + 1 }} / {{ projectQuestions.length }}
+                  当前项目：{{ currentProject.name || currentProject.company || currentProjectLabel }} · 问题 {{ currentQuestionIndex + 1 }} / {{ projectQuestions.length }}
                 </div>
                 <h3>{{ currentQuestion.question }}</h3>
                 <p>{{ currentQuestion.helper }}</p>
@@ -176,6 +176,12 @@
             <div v-else class="manual-panel">
               <el-form label-position="top">
                 <div class="form-grid">
+                  <el-form-item label="公司">
+                    <el-input v-model="currentProject.company" placeholder="例如：腾讯 / 字节跳动 / XX 科技有限公司" clearable />
+                  </el-form-item>
+                  <el-form-item label="部门">
+                    <el-input v-model="currentProject.department" placeholder="例如：数据平台部 / AI 应用团队" clearable />
+                  </el-form-item>
                   <el-form-item label="项目名称">
                     <el-input v-model="currentProject.name" placeholder="例如：AI 简历生成器" clearable />
                   </el-form-item>
@@ -213,7 +219,7 @@
                     v-model="currentProject.achievements"
                     type="textarea"
                     :rows="3"
-                    placeholder="例如：将生成耗时降低 30%；支持 10+ 模板；提升投递效率等。"
+                    placeholder="例如：将生成耗时降低 30%；支持 10+ 模板；提升投递效率等。没有真实数据时可不填。"
                   />
                 </el-form-item>
 
@@ -260,7 +266,9 @@
             <div class="preview-box project-preview">
               <div v-if="filledProjects.length" class="project-preview-list">
                 <div v-for="(project, index) in filledProjects" :key="project.id" class="project-preview-item">
-                  <strong>{{ index + 1 }}. {{ project.name || '未命名项目' }}</strong>
+                  <strong>{{ index + 1 }}. {{ project.name || project.company || '未命名项目' }}</strong>
+                  <p v-if="project.company">公司：{{ project.company }}</p>
+                  <p v-if="project.department">部门：{{ project.department }}</p>
                   <p v-if="project.dateRange">时间：{{ project.dateRange }}</p>
                   <p v-if="project.role">角色：{{ project.role }}</p>
                   <p v-if="project.techStack">技术栈：{{ project.techStack }}</p>
@@ -324,6 +332,11 @@ const basicInfo = reactive<CandidateBasicInfo>(onboardingStore.createEmptyBasicI
 
 const projectQuestions = [
   {
+    question: '这个项目属于哪家公司、哪个部门？',
+    helper: '只填写真实存在的信息；不方便透露或没有公司/部门时可以留空。',
+    placeholder: '例如：XX 科技有限公司 / 数据平台部；或：个人项目 / 无部门。'
+  },
+  {
     question: '这个项目叫什么？解决了什么问题？',
     helper: '描述业务背景、目标用户、核心痛点。',
     placeholder: '例如：企业内部低代码表单平台，解决运营人员无法自主搭建活动表单的问题。'
@@ -344,9 +357,9 @@ const projectQuestions = [
     placeholder: '例如：负责拖拽画布、字段联动和实时预览，通过依赖图解决复杂联动性能问题。'
   },
   {
-    question: '最终结果如何？有没有可量化指标？',
-    helper: '尽量补充数据：效率提升、用户量、准确率、耗时下降、成本减少等。',
-    placeholder: '例如：上线后服务 20+ 业务活动，表单搭建时间从 2 天缩短到 30 分钟。'
+    question: '最终结果如何？有没有真实的量化指标？',
+    helper: '只能填写真实数据；如果没有准确数据，可以写非量化结果或留空。',
+    placeholder: '例如：上线后服务 20+ 业务活动；或：提升了团队内部配置效率。'
   }
 ]
 
@@ -368,7 +381,9 @@ const contactPreview = computed(() => {
 
 const hasProjectContent = (project: CandidateProjectExperience) => {
   return Boolean(
-    project.name.trim() ||
+    project.company.trim() ||
+      project.department.trim() ||
+      project.name.trim() ||
       project.dateRange.trim() ||
       project.role.trim() ||
       project.techStack.trim() ||
@@ -484,8 +499,11 @@ const removeCurrentProject = () => {
 
 const buildProjectFromQa = () => {
   const answers = projectQuestions.map((item, index) => qaAnswers.value[index]?.trim() || '')
-  const [overview, roleAndTime, techStack, responsibilities, achievements] = answers
+  const [companyAndDepartment, overview, roleAndTime, techStack, responsibilities, achievements] = answers
 
+  if (companyAndDepartment) {
+    currentProject.value.rawNotes = [currentProject.value.rawNotes, `公司/部门：${companyAndDepartment}`].filter(Boolean).join('\n')
+  }
   if (overview) {
     currentProject.value.description = [currentProject.value.description, overview].filter(Boolean).join('\n')
   }
@@ -514,6 +532,8 @@ const formatProjectsAsText = () => {
     .map((project, index) => {
       return [
         `项目 ${index + 1}`,
+        project.company ? `公司：${project.company}` : '',
+        project.department ? `部门：${project.department}` : '',
         project.name ? `项目名称：${project.name}` : '',
         project.dateRange ? `项目时间：${project.dateRange}` : '',
         project.role ? `担任角色：${project.role}` : '',
@@ -540,6 +560,8 @@ const normalizeAiProject = (project: Record<string, unknown>, index: number): Ca
   return {
     ...onboardingStore.createEmptyProject(),
     id: projects.value[index]?.id || onboardingStore.createEmptyProject().id,
+    company: String(project.company || projects.value[index]?.company || ''),
+    department: String(project.department || projects.value[index]?.department || ''),
     name: String(project.name || projects.value[index]?.name || ''),
     dateRange,
     role: String(project.role || projects.value[index]?.role || ''),
@@ -554,7 +576,7 @@ const normalizeAiProject = (project: Record<string, unknown>, index: number): Ca
 }
 
 const buildPolishPrompt = () => {
-  return `请基于以下候选人信息，提炼并优化多个项目经历。要求：\n1. 每个项目都保留为独立项目，不要合并不同项目。\n2. 项目经历要适合简历展示，突出项目名称、时间、角色、技术栈、职责、技术方案、难点和结果。\n3. 尽量使用动作动词和可量化表达。\n4. 不要编造与用户描述明显冲突的信息；缺少指标时可写成“提升了交付效率”等保守表达。\n\n基础信息：\n${JSON.stringify(basicInfo, null, 2)}\n\n项目经历：\n${formatProjectsAsText()}`
+  return `请基于以下候选人信息，提炼并优化多个项目经历。要求：\n1. 每个项目都保留为独立项目，不要合并不同项目。\n2. 项目经历要适合简历展示，可以突出公司、部门、项目名称、时间、角色、技术栈、职责、技术方案、难点和结果。\n3. 可以润色用户已提供的信息，但严禁编造用户未提供的公司、部门、项目、指标、时间或成果。\n4. 缺少指标时不要编造数字；可以保守改写为“提升了交付效率”等非量化表达。\n\n基础信息：\n${JSON.stringify(basicInfo, null, 2)}\n\n项目经历：\n${formatProjectsAsText()}`
 }
 
 const handlePolishProject = async () => {
