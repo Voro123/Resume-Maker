@@ -17,6 +17,15 @@ const resumeStore = useResumeStore()
 const fileInputRef = ref<HTMLInputElement>()
 const currentAvatarTarget = ref<HTMLElement | null>(null)
 let enhanceTimer: number | null = null
+let dragState: {
+  target: HTMLElement
+  img: HTMLImageElement
+  startX: number
+  startY: number
+  originX: number
+  originY: number
+  moved: boolean
+} | null = null
 
 const AVATAR_KEYWORDS = [
   'avatar',
@@ -33,9 +42,13 @@ const AVATAR_KEYWORDS = [
 
 const BULLET_CHARS = ['•', '·', '●', '○', '▪', '▫', '◦', '◆', '◇', '-', '–']
 const UPLOAD_TEXT_REGEXP = /点击|上传|替换|头像|照片/g
+const DEFAULT_AVATAR_STATE = { x: 0, y: 0, scale: 1 }
+const MIN_AVATAR_SCALE = 0.7
+const MAX_AVATAR_SCALE = 3
 
 const normalizeText = (value: string | null | undefined) => (value || '').toLowerCase()
 const pxToNumber = (value: string) => Number.parseFloat(value || '0') || 0
+const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value))
 
 const stripCssContentQuotes = (value: string) => {
   if (!value || value === 'none' || value === 'normal' || value === '""') return ''
@@ -80,6 +93,31 @@ const saveCurrentResumeHtml = () => {
   resumeStore.updateGeneratedHTML(content.innerHTML)
 }
 
+const getAvatarState = (target: HTMLElement) => ({
+  x: Number(target.dataset.avatarX || DEFAULT_AVATAR_STATE.x),
+  y: Number(target.dataset.avatarY || DEFAULT_AVATAR_STATE.y),
+  scale: Number(target.dataset.avatarScale || DEFAULT_AVATAR_STATE.scale)
+})
+
+const setAvatarState = (target: HTMLElement, state: { x: number; y: number; scale: number }) => {
+  const x = Math.round(state.x)
+  const y = Math.round(state.y)
+  const scale = Number(clamp(state.scale, MIN_AVATAR_SCALE, MAX_AVATAR_SCALE).toFixed(2))
+  target.dataset.avatarX = String(x)
+  target.dataset.avatarY = String(y)
+  target.dataset.avatarScale = String(scale)
+
+  const img = target.querySelector<HTMLImageElement>('img')
+  if (!img) return
+
+  img.style.transform = `translate(${x}px, ${y}px) scale(${scale})`
+  img.style.transformOrigin = 'center center'
+}
+
+const resetAvatarState = (target: HTMLElement) => {
+  setAvatarState(target, DEFAULT_AVATAR_STATE)
+}
+
 const isLikelyAvatarElement = (el: HTMLElement) => {
   if (hasAvatarKeyword(el)) return true
 
@@ -109,9 +147,6 @@ const isLikelyAvatarElement = (el: HTMLElement) => {
 }
 
 const cleanAvatarPlaceholderContent = (target: HTMLElement) => {
-  const hasImage = Boolean(target.querySelector('img'))
-  if (hasImage) return
-
   Array.from(target.childNodes).forEach((node) => {
     if (node.nodeType === Node.TEXT_NODE) {
       const text = node.textContent || ''
@@ -122,29 +157,16 @@ const cleanAvatarPlaceholderContent = (target: HTMLElement) => {
     }
 
     const el = node as HTMLElement
-    if (el.classList?.contains('resume-avatar-upload-badge')) return
+    if (el.tagName?.toLowerCase() === 'img') return
 
     const text = el.textContent?.trim() || ''
     const isUploadHint = UPLOAD_TEXT_REGEXP.test(text)
-    const isIconLike = el.classList?.contains('avatar-icon') || el.classList?.contains('resume-avatar-icon')
+    const isIconLike = el.classList?.contains('avatar-icon') || el.classList?.contains('resume-avatar-icon') || el.classList?.contains('resume-avatar-upload-badge')
 
     if (isUploadHint || isIconLike) {
       el.remove()
     }
   })
-}
-
-const ensureAvatarBadge = (target: HTMLElement) => {
-  const existing = target.querySelector<HTMLElement>(':scope > .resume-avatar-upload-badge')
-  if (existing) {
-    existing.textContent = '📷'
-    return
-  }
-
-  const badge = document.createElement('span')
-  badge.className = 'resume-avatar-upload-badge'
-  badge.textContent = '📷'
-  target.appendChild(badge)
 }
 
 const markAvatarShell = (el: HTMLElement) => {
@@ -158,7 +180,8 @@ const markAvatarShell = (el: HTMLElement) => {
   }
 
   cleanAvatarPlaceholderContent(el)
-  ensureAvatarBadge(el)
+  const state = getAvatarState(el)
+  setAvatarState(el, state)
 }
 
 const wrapAvatarImage = (img: HTMLImageElement) => {
@@ -194,7 +217,7 @@ const wrapAvatarImage = (img: HTMLImageElement) => {
   img.style.display = 'block'
   img.style.borderRadius = 'inherit'
 
-  ensureAvatarBadge(shell)
+  resetAvatarState(shell)
   return shell
 }
 
@@ -345,41 +368,149 @@ const scheduleEnhance = () => {
   }, 80)
 }
 
+const findAvatarTarget = (target: HTMLElement | null) => {
+  return target?.closest<HTMLElement>('[data-resume-avatar-upload="true"]') || null
+}
+
+const hasAvatarImage = (target: HTMLElement) => Boolean(target.querySelector('img'))
+
+const openAvatarFilePicker = (target: HTMLElement) => {
+  currentAvatarTarget.value = target
+  fileInputRef.value?.click()
+}
+
 const handleResumeClick = (event: MouseEvent) => {
-  const target = event.target as HTMLElement | null
+  const target = findAvatarTarget(event.target as HTMLElement | null)
   if (!target) return
 
-  const avatarTarget = target.closest<HTMLElement>('[data-resume-avatar-upload="true"]')
-  if (!avatarTarget) return
+  if (dragState?.moved) {
+    event.preventDefault()
+    event.stopPropagation()
+    return
+  }
+
+  if (!hasAvatarImage(target)) {
+    event.preventDefault()
+    event.stopPropagation()
+    openAvatarFilePicker(target)
+  }
+}
+
+const handleAvatarDoubleClick = (event: MouseEvent) => {
+  const target = findAvatarTarget(event.target as HTMLElement | null)
+  if (!target) return
 
   event.preventDefault()
   event.stopPropagation()
-  currentAvatarTarget.value = avatarTarget
-  fileInputRef.value?.click()
+  openAvatarFilePicker(target)
+}
+
+const handleAvatarMouseDown = (event: MouseEvent) => {
+  if (event.button !== 0) return
+
+  const target = findAvatarTarget(event.target as HTMLElement | null)
+  if (!target || !hasAvatarImage(target)) return
+
+  const img = target.querySelector<HTMLImageElement>('img')
+  if (!img) return
+
+  event.preventDefault()
+  event.stopPropagation()
+
+  const state = getAvatarState(target)
+  dragState = {
+    target,
+    img,
+    startX: event.clientX,
+    startY: event.clientY,
+    originX: state.x,
+    originY: state.y,
+    moved: false
+  }
+
+  target.classList.add('is-avatar-dragging')
+  window.addEventListener('mousemove', handleAvatarMouseMove, true)
+  window.addEventListener('mouseup', handleAvatarMouseUp, true)
+}
+
+const handleAvatarMouseMove = (event: MouseEvent) => {
+  if (!dragState) return
+
+  const nextX = dragState.originX + event.clientX - dragState.startX
+  const nextY = dragState.originY + event.clientY - dragState.startY
+  const state = getAvatarState(dragState.target)
+
+  if (Math.abs(event.clientX - dragState.startX) > 2 || Math.abs(event.clientY - dragState.startY) > 2) {
+    dragState.moved = true
+  }
+
+  setAvatarState(dragState.target, {
+    ...state,
+    x: nextX,
+    y: nextY
+  })
+}
+
+const handleAvatarMouseUp = () => {
+  if (!dragState) return
+
+  dragState.target.classList.remove('is-avatar-dragging')
+  window.removeEventListener('mousemove', handleAvatarMouseMove, true)
+  window.removeEventListener('mouseup', handleAvatarMouseUp, true)
+
+  if (dragState.moved) {
+    saveCurrentResumeHtml()
+  }
+
+  window.setTimeout(() => {
+    dragState = null
+  }, 0)
+}
+
+const handleAvatarWheel = (event: WheelEvent) => {
+  const target = findAvatarTarget(event.target as HTMLElement | null)
+  if (!target || !hasAvatarImage(target)) return
+
+  event.preventDefault()
+  event.stopPropagation()
+
+  const state = getAvatarState(target)
+  const nextScale = clamp(state.scale + (event.deltaY < 0 ? 0.08 : -0.08), MIN_AVATAR_SCALE, MAX_AVATAR_SCALE)
+  setAvatarState(target, {
+    ...state,
+    scale: nextScale
+  })
+  saveCurrentResumeHtml()
 }
 
 const replaceAvatarTargetImage = (dataUrl: string) => {
   const target = currentAvatarTarget.value
   if (!target) return
 
-  const img = target.tagName.toLowerCase() === 'img'
-    ? (target as HTMLImageElement)
-    : target.querySelector<HTMLImageElement>('img')
+  target.style.backgroundImage = ''
+  cleanAvatarPlaceholderContent(target)
 
-  if (img) {
-    img.src = dataUrl
-    img.removeAttribute('srcset')
-    img.classList.add('resume-avatar-image')
-  } else {
-    target.style.backgroundImage = `url("${dataUrl}")`
-    target.style.backgroundSize = 'cover'
-    target.style.backgroundPosition = 'center'
-    cleanAvatarPlaceholderContent(target)
+  let img = target.querySelector<HTMLImageElement>('img')
+  if (!img) {
+    img = document.createElement('img')
+    img.className = 'resume-avatar-image'
+    img.alt = ''
+    target.appendChild(img)
   }
 
+  img.src = dataUrl
+  img.removeAttribute('srcset')
+  img.classList.add('resume-avatar-image')
+  img.style.width = '100%'
+  img.style.height = '100%'
+  img.style.objectFit = 'cover'
+  img.style.display = 'block'
+  img.style.borderRadius = 'inherit'
+
+  resetAvatarState(target)
   saveCurrentResumeHtml()
   scheduleEnhance()
-  ElMessage.success('头像已替换')
+  ElMessage.success('头像已替换，可拖动调整位置，滚轮缩放，双击重新上传')
 }
 
 const handleAvatarFileChange = (event: Event) => {
@@ -405,18 +536,36 @@ const handleAvatarFileChange = (event: Event) => {
   reader.readAsDataURL(file)
 }
 
+const bindAvatarEvents = () => {
+  const content = getResumeContent()
+  if (!content) return
+
+  content.removeEventListener('click', handleResumeClick, true)
+  content.removeEventListener('dblclick', handleAvatarDoubleClick, true)
+  content.removeEventListener('mousedown', handleAvatarMouseDown, true)
+  content.removeEventListener('wheel', handleAvatarWheel, true)
+
+  content.addEventListener('click', handleResumeClick, true)
+  content.addEventListener('dblclick', handleAvatarDoubleClick, true)
+  content.addEventListener('mousedown', handleAvatarMouseDown, true)
+  content.addEventListener('wheel', handleAvatarWheel, { capture: true, passive: false })
+}
+
 onMounted(() => {
   nextTick(() => {
     enhanceResumeDom()
-    const content = getResumeContent()
-    content?.removeEventListener('click', handleResumeClick, true)
-    content?.addEventListener('click', handleResumeClick, true)
+    bindAvatarEvents()
   })
 })
 
 onUnmounted(() => {
   const content = getResumeContent()
   content?.removeEventListener('click', handleResumeClick, true)
+  content?.removeEventListener('dblclick', handleAvatarDoubleClick, true)
+  content?.removeEventListener('mousedown', handleAvatarMouseDown, true)
+  content?.removeEventListener('wheel', handleAvatarWheel, true)
+  window.removeEventListener('mousemove', handleAvatarMouseMove, true)
+  window.removeEventListener('mouseup', handleAvatarMouseUp, true)
 
   if (enhanceTimer) {
     window.clearTimeout(enhanceTimer)
@@ -429,9 +578,7 @@ watch(
   () => {
     nextTick(() => {
       enhanceResumeDom()
-      const content = getResumeContent()
-      content?.removeEventListener('click', handleResumeClick, true)
-      content?.addEventListener('click', handleResumeClick, true)
+      bindAvatarEvents()
     })
   }
 )
@@ -462,16 +609,26 @@ watch(
     min-height: 64px;
     background: rgba(255, 255, 255, 0.08);
     transition: box-shadow 0.2s ease, outline 0.2s ease, filter 0.2s ease;
+    user-select: none;
+    touch-action: none;
 
     &:hover {
       outline: 2px dashed #409eff !important;
       outline-offset: 4px !important;
       filter: brightness(0.98);
     }
+
+    &.is-avatar-dragging {
+      cursor: grabbing !important;
+    }
   }
 
-  .resume-avatar-placeholder::before {
+  .resume-avatar-placeholder::before,
+  .resume-avatar-placeholder::after,
+  .resume-avatar-upload-target::before,
+  .resume-avatar-upload-target::after {
     content: '' !important;
+    display: none !important;
   }
 
   .resume-avatar-image,
@@ -481,31 +638,10 @@ watch(
     object-fit: cover !important;
     display: block !important;
     border-radius: inherit !important;
-  }
-
-  .resume-avatar-upload-badge {
-    position: absolute;
-    right: 8px;
-    bottom: 8px;
-    z-index: 2;
-    width: 24px;
-    height: 24px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 999px;
-    background: rgba(17, 24, 39, 0.78);
-    color: #fff;
-    font-size: 13px;
-    line-height: 1;
-    opacity: 0;
+    transform-origin: center center;
+    will-change: transform;
+    user-select: none;
     pointer-events: none;
-    transition: opacity 0.2s ease;
-  }
-
-  .resume-avatar-placeholder:hover > .resume-avatar-upload-badge,
-  .resume-avatar-upload-target:hover > .resume-avatar-upload-badge {
-    opacity: 1;
   }
 
   ul.resume-safe-list,
@@ -559,10 +695,6 @@ watch(
     .resume-avatar-placeholder,
     .resume-avatar-upload-target {
       outline: none !important;
-    }
-
-    .resume-avatar-upload-badge {
-      display: none !important;
     }
   }
 }
