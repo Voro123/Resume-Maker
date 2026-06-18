@@ -43,17 +43,16 @@ const hideToolbar = () => {
   savedRange = null
 }
 
-const isNodeInsideResume = (node: Node | null) => {
-  const content = getResumeContent()
-  if (!content || !node) return false
-
-  const el = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement
-  return Boolean(el && content.contains(el))
+const getClosestElement = (node: Node | null): HTMLElement | null => {
+  if (!node) return null
+  if (node.nodeType === Node.ELEMENT_NODE) return node as HTMLElement
+  return node.parentElement
 }
 
-const getClosestElement = (node: Node | null) => {
-  if (!node) return null
-  return (node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement) as HTMLElement | null
+const isNodeInsideResume = (node: Node | null) => {
+  const content = getResumeContent()
+  const el = getClosestElement(node)
+  return Boolean(content && el && content.contains(el))
 }
 
 const isSelectionInsideStrong = (range: Range) => {
