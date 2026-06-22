@@ -1,9 +1,24 @@
 // 提示词模板类型定义
+export type PromptTemplateCategory =
+  | 'tech'
+  | 'product'
+  | 'design'
+  | 'marketing'
+  | 'operations'
+  | 'business'
+  | 'finance'
+  | 'hr'
+  | 'admin'
+  | 'legal'
+  | 'education'
+  | 'fresh'
+  | 'custom'
+
 export interface PromptTemplate {
   id: string
   name: string
   description: string
-  category: 'tech' | 'product' | 'design' | 'marketing' | 'fresh' | 'custom'
+  category: PromptTemplateCategory
   prompt: string  // 完整提示词（fixedPrompt + editablePrompt）
   fixedPrompt?: string  // 固定提示词（隐藏，用户不可编辑，如API调用指令）
   editablePrompt?: string  // 可编辑提示词（用户可见可编辑的部分）
