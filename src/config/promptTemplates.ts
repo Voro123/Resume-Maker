@@ -246,5 +246,5 @@ export const getCategories = () => {
 
 // 根据ID获取模板
 export const getTemplateById = (id: string) => {
-  return promptTemplates.find(t => t.id)
+  return promptTemplates.find(t => t.id === id)
 }
