@@ -116,7 +116,7 @@
               type="info"
               :closable="false"
               show-icon
-              title="默认使用结构化填写；需要 AI 辅助挖掘经历时，可以切换到 AI 问答挖掘。"
+              title="项目经历使用结构化表单填写。公司项目可填写公司和部门；个人项目会隐藏公司、部门字段。"
             />
 
             <div class="project-toolbar">
@@ -146,20 +146,24 @@
               </div>
             </div>
 
-            <el-radio-group v-model="projectMode" class="mode-switch">
-              <el-radio-button label="manual">结构化填写</el-radio-button>
-              <el-radio-button label="qa">AI 问答挖掘</el-radio-button>
-            </el-radio-group>
-
-            <div v-if="projectMode === 'manual'" class="manual-panel">
+            <div class="manual-panel">
               <el-form label-position="top">
+                <el-form-item label="项目类型">
+                  <el-radio-group v-model="currentProject.projectType" @change="handleProjectTypeChange">
+                    <el-radio-button label="company">公司项目</el-radio-button>
+                    <el-radio-button label="personal">个人项目</el-radio-button>
+                  </el-radio-group>
+                </el-form-item>
+
                 <div class="form-grid">
-                  <el-form-item label="公司">
-                    <el-input v-model="currentProject.company" placeholder="例如：腾讯 / 字节跳动 / XX 科技有限公司" clearable />
-                  </el-form-item>
-                  <el-form-item label="部门">
-                    <el-input v-model="currentProject.department" placeholder="例如：数据平台部 / AI 应用团队" clearable />
-                  </el-form-item>
+                  <template v-if="currentProject.projectType === 'company'">
+                    <el-form-item label="公司">
+                      <el-input v-model="currentProject.company" placeholder="例如：腾讯 / 字节跳动 / XX 科技有限公司" clearable />
+                    </el-form-item>
+                    <el-form-item label="部门">
+                      <el-input v-model="currentProject.department" placeholder="例如：数据平台部 / AI 应用团队" clearable />
+                    </el-form-item>
+                  </template>
                   <el-form-item label="项目名称">
                     <el-input v-model="currentProject.name" placeholder="例如：AI 简历生成器" clearable />
                   </el-form-item>
@@ -212,28 +216,6 @@
               </el-form>
             </div>
 
-            <div v-else class="qa-panel">
-              <div class="question-card">
-                <div class="question-index">
-                  当前项目：{{ currentProject.name || currentProject.company || currentProjectLabel }} · 问题 {{ currentQuestionIndex + 1 }} / {{ projectQuestions.length }}
-                </div>
-                <h3>{{ currentQuestion.question }}</h3>
-                <p>{{ currentQuestion.helper }}</p>
-                <el-input
-                  v-model="qaAnswers[currentQuestionIndex]"
-                  type="textarea"
-                  :rows="5"
-                  :placeholder="currentQuestion.placeholder"
-                />
-              </div>
-
-              <div class="qa-actions">
-                <el-button :disabled="currentQuestionIndex === 0" @click="currentQuestionIndex--">上一题</el-button>
-                <el-button v-if="currentQuestionIndex < projectQuestions.length - 1" type="primary" @click="currentQuestionIndex++">下一题</el-button>
-                <el-button v-else type="success" @click="buildProjectFromQa">生成当前项目草稿</el-button>
-              </div>
-            </div>
-
             <div class="polish-actions">
               <el-button type="primary" plain :loading="isPolishing" @click="handlePolishProject">
                 <el-icon><MagicStick /></el-icon>
@@ -267,8 +249,9 @@
               <div v-if="filledProjects.length" class="project-preview-list">
                 <div v-for="(project, index) in filledProjects" :key="project.id" class="project-preview-item">
                   <strong>{{ index + 1 }}. {{ project.name || project.company || '未命名项目' }}</strong>
-                  <p v-if="project.company">公司：{{ project.company }}</p>
-                  <p v-if="project.department">部门：{{ project.department }}</p>
+                  <p><strong>类型：</strong>{{ project.projectType === 'company' ? '公司项目' : '个人项目' }}</p>
+                  <p v-if="project.projectType === 'company' && project.company">公司：{{ project.company }}</p>
+                  <p v-if="project.projectType === 'company' && project.department">部门：{{ project.department }}</p>
                   <p v-if="project.dateRange">时间：{{ project.dateRange }}</p>
                   <p v-if="project.role">角色：{{ project.role }}</p>
                   <p v-if="project.techStack">技术栈：{{ project.techStack }}</p>
@@ -324,9 +307,6 @@ type SettingsTab = 'api' | 'profile' | 'backup'
 const visible = ref(false)
 const activeSettingsTab = ref<SettingsTab>('api')
 const activeStep = ref(0)
-const projectMode = ref<'manual' | 'qa'>('manual')
-const currentQuestionIndex = ref(0)
-const qaAnswers = ref<string[]>([])
 const isPolishing = ref(false)
 const projects = ref<CandidateProjectExperience[]>([onboardingStore.createEmptyProject()])
 const activeProjectId = ref(projects.value[0].id)
@@ -339,41 +319,6 @@ const apiConfigForm = reactive({
 
 const basicInfo = reactive<CandidateBasicInfo>(onboardingStore.createEmptyBasicInfo())
 
-const projectQuestions = [
-  {
-    question: '这个项目属于哪家公司、哪个部门？',
-    helper: '只填写真实存在的信息；不方便透露或没有公司/部门时可以留空。',
-    placeholder: '例如：XX 科技有限公司 / 数据平台部；或：个人项目 / 无部门。'
-  },
-  {
-    question: '这个项目叫什么？解决了什么问题？',
-    helper: '描述业务背景、目标用户、核心痛点。',
-    placeholder: '例如：企业内部低代码表单平台，解决运营人员无法自主搭建活动表单的问题。'
-  },
-  {
-    question: '项目周期和你的角色是什么？',
-    helper: '补充项目时间、团队规模、你的身份和职责范围。',
-    placeholder: '例如：2024.03-2024.06，担任前端核心开发，负责编辑器和发布流程。'
-  },
-  {
-    question: '用了哪些技术栈或关键方案？',
-    helper: '可以包含框架、工程化、性能优化、AI 能力、后端/数据库等。',
-    placeholder: '例如：Vue3、TypeScript、Pinia、Element Plus、JSON Schema、虚拟滚动、组件懒加载。'
-  },
-  {
-    question: '你具体负责了哪些模块？有哪些难点？',
-    helper: '简历里最有价值的是“负责内容 + 难点 + 方法”。',
-    placeholder: '例如：负责拖拽画布、字段联动和实时预览，通过依赖图解决复杂联动性能问题。'
-  },
-  {
-    question: '最终结果如何？有没有真实的量化指标？',
-    helper: '只能填写真实数据；如果没有准确数据，可以写非量化结果或留空。',
-    placeholder: '例如：上线后服务 20+ 业务活动；或：提升了团队内部配置效率。'
-  }
-]
-
-const currentQuestion = computed(() => projectQuestions[currentQuestionIndex.value])
-
 const currentProject = computed<CandidateProjectExperience>(() => {
   return projects.value.find((project) => project.id === activeProjectId.value) || projects.value[0]
 })
@@ -381,8 +326,6 @@ const currentProject = computed<CandidateProjectExperience>(() => {
 const currentProjectIndex = computed(() => {
   return Math.max(projects.value.findIndex((project) => project.id === activeProjectId.value), 0)
 })
-
-const currentProjectLabel = computed(() => `项目 ${currentProjectIndex.value + 1}`)
 
 const contactPreview = computed(() => {
   return [basicInfo.phone, basicInfo.email, basicInfo.city].filter(Boolean).join(' / ')
@@ -449,11 +392,6 @@ const handleResetApiConfig = () => {
   ElMessage.info('已清空 API 配置')
 }
 
-const resetQaState = () => {
-  currentQuestionIndex.value = 0
-  qaAnswers.value = []
-}
-
 const ensureProject = () => {
   if (!projects.value.length) {
     const project = onboardingStore.createEmptyProject()
@@ -462,18 +400,27 @@ const ensureProject = () => {
   }
 }
 
+const normalizeLocalProject = (project: CandidateProjectExperience): CandidateProjectExperience => {
+  const projectType = project.projectType === 'personal' ? 'personal' : 'company'
+  return {
+    ...onboardingStore.createEmptyProject(),
+    ...project,
+    projectType,
+    company: projectType === 'company' ? project.company : '',
+    department: projectType === 'company' ? project.department : ''
+  }
+}
+
 const restoreProfile = () => {
   Object.assign(basicInfo, onboardingStore.createEmptyBasicInfo())
   projects.value = [onboardingStore.createEmptyProject()]
   activeProjectId.value = projects.value[0].id
-  projectMode.value = 'manual'
-  resetQaState()
 
   if (!onboardingStore.profile) return
 
   Object.assign(basicInfo, onboardingStore.profile.basicInfo)
   projects.value = onboardingStore.profile.projects?.length
-    ? onboardingStore.profile.projects.map((project) => ({ ...onboardingStore.createEmptyProject(), ...project }))
+    ? onboardingStore.profile.projects.map(normalizeLocalProject)
     : [onboardingStore.createEmptyProject()]
   activeProjectId.value = projects.value[0].id
 }
@@ -502,8 +449,6 @@ const addProject = () => {
   const project = onboardingStore.createEmptyProject()
   projects.value.push(project)
   activeProjectId.value = project.id
-  projectMode.value = 'manual'
-  resetQaState()
 }
 
 const removeCurrentProject = () => {
@@ -513,37 +458,13 @@ const removeCurrentProject = () => {
   const nextProjects = projects.value.filter((project) => project.id !== activeProjectId.value)
   projects.value = nextProjects
   activeProjectId.value = nextProjects[Math.min(removeIndex, nextProjects.length - 1)].id
-  resetQaState()
 }
 
-const buildProjectFromQa = () => {
-  const answers = projectQuestions.map((item, index) => qaAnswers.value[index]?.trim() || '')
-  const [companyAndDepartment, overview, roleAndTime, techStack, responsibilities, achievements] = answers
-
-  if (companyAndDepartment) {
-    currentProject.value.rawNotes = [currentProject.value.rawNotes, `公司/部门：${companyAndDepartment}`].filter(Boolean).join('\n')
+const handleProjectTypeChange = () => {
+  if (currentProject.value.projectType === 'personal') {
+    currentProject.value.company = ''
+    currentProject.value.department = ''
   }
-  if (overview) {
-    currentProject.value.description = [currentProject.value.description, overview].filter(Boolean).join('\n')
-  }
-  if (roleAndTime) {
-    currentProject.value.rawNotes = [currentProject.value.rawNotes, `时间/角色：${roleAndTime}`].filter(Boolean).join('\n')
-  }
-  if (techStack && !currentProject.value.techStack) {
-    currentProject.value.techStack = techStack
-  } else if (techStack) {
-    currentProject.value.rawNotes = [currentProject.value.rawNotes, `技术栈补充：${techStack}`].filter(Boolean).join('\n')
-  }
-  if (responsibilities) {
-    currentProject.value.responsibilities = [currentProject.value.responsibilities, responsibilities].filter(Boolean).join('\n')
-  }
-  if (achievements) {
-    currentProject.value.achievements = [currentProject.value.achievements, achievements].filter(Boolean).join('\n')
-  }
-  currentProject.value.source = 'qa'
-  projectMode.value = 'manual'
-  resetQaState()
-  ElMessage.success('已根据问答补充当前项目，可继续在结构化填写中精修')
 }
 
 const formatProjectsAsText = () => {
@@ -551,8 +472,9 @@ const formatProjectsAsText = () => {
     .map((project, index) => {
       return [
         `项目 ${index + 1}`,
-        project.company ? `公司：${project.company}` : '',
-        project.department ? `部门：${project.department}` : '',
+        `项目类型：${project.projectType === 'company' ? '公司项目' : '个人项目'}`,
+        project.projectType === 'company' && project.company ? `公司：${project.company}` : '',
+        project.projectType === 'company' && project.department ? `部门：${project.department}` : '',
         project.name ? `项目名称：${project.name}` : '',
         project.dateRange ? `项目时间：${project.dateRange}` : '',
         project.role ? `担任角色：${project.role}` : '',
@@ -575,27 +497,30 @@ const normalizeAiProject = (project: Record<string, unknown>, index: number): Ca
   const achievements = Array.isArray(project.achievements)
     ? project.achievements.join('\n')
     : String(project.achievements || '')
+  const existingProject = projects.value[index]
+  const projectType = String(project.projectType || existingProject?.projectType || 'company') === 'personal' ? 'personal' : 'company'
 
   return {
     ...onboardingStore.createEmptyProject(),
-    id: projects.value[index]?.id || onboardingStore.createEmptyProject().id,
-    company: String(project.company || projects.value[index]?.company || ''),
-    department: String(project.department || projects.value[index]?.department || ''),
-    name: String(project.name || projects.value[index]?.name || ''),
+    id: existingProject?.id || onboardingStore.createEmptyProject().id,
+    projectType,
+    company: projectType === 'company' ? String(project.company || existingProject?.company || '') : '',
+    department: projectType === 'company' ? String(project.department || existingProject?.department || '') : '',
+    name: String(project.name || existingProject?.name || ''),
     dateRange,
-    role: String(project.role || projects.value[index]?.role || ''),
+    role: String(project.role || existingProject?.role || ''),
     techStack,
-    description: String(project.description || projects.value[index]?.description || ''),
+    description: String(project.description || existingProject?.description || ''),
     responsibilities,
     achievements,
-    rawNotes: String(project.rawNotes || projects.value[index]?.rawNotes || ''),
+    rawNotes: String(project.rawNotes || existingProject?.rawNotes || ''),
     source: 'ai-polished',
     aiOptimizedAt: Date.now()
   }
 }
 
 const buildPolishPrompt = () => {
-  return `请基于以下候选人信息，提炼并优化多个项目经历。要求：\n1. 每个项目都保留为独立项目，不要合并不同项目。\n2. 项目经历要适合简历展示，可以突出公司、部门、项目名称、时间、角色、技术栈、职责、技术方案、难点和结果。\n3. 可以润色用户已提供的信息，但严禁编造用户未提供的公司、部门、项目、指标、时间或成果。\n4. 缺少指标时不要编造数字；可以保守改写为“提升了交付效率”等非量化表达。\n\n基础信息：\n${JSON.stringify(basicInfo, null, 2)}\n\n项目经历：\n${formatProjectsAsText()}`
+  return `请基于以下候选人信息，提炼并优化多个项目经历。要求：\n1. 每个项目都保留为独立项目，不要合并不同项目。\n2. 项目经历要适合简历展示，可以突出项目类型、公司、部门、项目名称、时间、角色、技术栈、职责、技术方案、难点和结果。\n3. 可以润色用户已提供的信息，但严禁编造用户未提供的公司、部门、项目、指标、时间或成果。\n4. 个人项目不得生成公司、部门、雇主、外包归属等公司项目信息。\n5. 缺少指标时不要编造数字；可以保守改写为“提升了交付效率”等非量化表达。\n\n基础信息：\n${JSON.stringify(basicInfo, null, 2)}\n\n项目经历：\n${formatProjectsAsText()}`
 }
 
 const handlePolishProject = async () => {
@@ -631,7 +556,6 @@ const handlePolishProject = async () => {
     if (data.projects?.length) {
       projects.value = data.projects.map(normalizeAiProject)
       activeProjectId.value = projects.value[0].id
-      projectMode.value = 'manual'
       ElMessage.success('AI 已优化全部项目经历')
     } else {
       ElMessage.warning('AI 未返回项目经历，请补充更多项目信息后重试')
@@ -725,47 +649,21 @@ onBeforeUnmount(() => {
 }
 
 .project-toolbar-actions,
-.qa-actions,
 .polish-actions {
   display: flex;
   align-items: center;
   gap: 12px;
 }
 
-.mode-switch {
-  align-self: flex-start;
-}
-
-.question-card {
-  padding: 16px;
-  border: 1px solid #e4e7ed;
-  border-radius: 10px;
-  background: #f8fafc;
-
-  h3 {
-    margin: 6px 0 8px;
-    font-size: 16px;
-    color: #303133;
-  }
-
-  p {
-    margin: 0 0 12px;
-    color: #606266;
-    line-height: 1.5;
-  }
-}
-
-.question-index,
-.tip-text {
-  font-size: 12px;
-  color: #909399;
-}
-
-.qa-panel,
 .manual-panel {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.tip-text {
+  font-size: 12px;
+  color: #909399;
 }
 
 .preview-panel h3 {
@@ -826,7 +724,6 @@ onBeforeUnmount(() => {
   .api-actions,
   .project-toolbar,
   .project-toolbar-actions,
-  .qa-actions,
   .polish-actions,
   .dialog-footer {
     align-items: stretch;
