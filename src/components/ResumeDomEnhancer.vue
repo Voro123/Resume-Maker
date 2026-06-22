@@ -34,6 +34,7 @@ const DEFAULT_AVATAR_STATE = { x: 0, y: 0, scale: 1 }
 const MIN_AVATAR_SCALE = 0.7
 const MAX_AVATAR_SCALE = 3
 const MAX_AVATAR_SIZE = 180
+const MIN_PSEUDO_LIST_PADDING = 18
 
 const pxToNumber = (value: string) => Number.parseFloat(value || '0') || 0
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value))
@@ -205,6 +206,41 @@ const isNativeList = (list: HTMLElement) => {
   return style.listStyleType !== 'none'
 }
 
+const repairPseudoBeforeListSpacing = () => {
+  const container = getResumeContainer()
+  if (!container) return
+
+  container.querySelectorAll<HTMLElement>('li').forEach((item) => {
+    if (!hasPseudoBeforeMarker(item)) return
+
+    const parentList = item.parentElement as HTMLElement | null
+    item.classList.remove('resume-safe-list-item')
+    item.style.listStylePosition = ''
+    item.style.textIndent = '0'
+    item.style.marginLeft = '0'
+    item.style.overflow = 'visible'
+
+    if (parentList && ['UL', 'OL'].includes(parentList.tagName)) {
+      parentList.classList.remove('resume-safe-list')
+      const parentStyle = window.getComputedStyle(parentList)
+      if (parentStyle.listStyleType === 'none') {
+        parentList.style.paddingLeft = '0'
+        parentList.style.marginLeft = '0'
+      }
+    }
+
+    const before = window.getComputedStyle(item, '::before')
+    const left = Math.max(0, pxToNumber(before.left))
+    const markerWidth = Math.max(pxToNumber(before.width), pxToNumber(before.fontSize), 6)
+    const requiredPadding = Math.ceil(Math.max(MIN_PSEUDO_LIST_PADDING, left + markerWidth + 8))
+    const currentPadding = pxToNumber(window.getComputedStyle(item).paddingLeft)
+
+    if (currentPadding < requiredPadding || item.style.paddingLeft === '0.28em') {
+      item.style.paddingLeft = `${requiredPadding}px`
+    }
+  })
+}
+
 const normalizeNativeLists = () => {
   const container = getResumeContainer()
   if (!container) return
@@ -288,7 +324,9 @@ const normalizeCustomBulletLists = () => {
 }
 
 const enhanceListLayout = () => {
+  repairPseudoBeforeListSpacing()
   normalizeNativeLists()
+  repairPseudoBeforeListSpacing()
   normalizeCustomBulletLists()
 }
 
