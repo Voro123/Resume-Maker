@@ -38,31 +38,12 @@ const MAX_AVATAR_SIZE = 180
 const pxToNumber = (value: string) => Number.parseFloat(value || '0') || 0
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value))
 
-const stripCssContentQuotes = (value: string) => {
-  if (!value || value === 'none' || value === 'normal' || value === '""') return ''
-  return value
-    .replace(/^[\'"]|[\'"]$/g, '')
-    .replace(/\\([0-9a-fA-F]{1,6})\s?/g, (_, hex) => String.fromCodePoint(Number.parseInt(hex, 16)))
-}
-
-const measureTextWidth = (text: string, style: CSSStyleDeclaration) => {
-  if (!text) return 0
-
-  const canvas = document.createElement('canvas')
-  const context = canvas.getContext('2d')
-  if (!context) return text.length * pxToNumber(style.fontSize || '14px')
-
-  context.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`
-  return context.measureText(text).width
-}
-
 const getResumeContent = () => document.querySelector('.resume-content') as HTMLElement | null
 const getResumeContainer = () => document.querySelector('.resume-content .resume-container') as HTMLElement | null
 
 const saveCurrentResumeHtml = () => {
   const content = getResumeContent()
   if (!content) return
-
   resumeStore.updateGeneratedHTML(content.innerHTML)
 }
 
@@ -104,14 +85,11 @@ const isTopAvatarImage = (img: HTMLImageElement) => {
   return images[0] === img || (nearTop && avatarLikeSize)
 }
 
-const isExplicitAvatarTarget = (el: HTMLElement) => {
-  return el.matches(EXPLICIT_AVATAR_SELECTOR)
-}
+const isExplicitAvatarTarget = (el: HTMLElement) => el.matches(EXPLICIT_AVATAR_SELECTOR)
 
 const clampAvatarShellSize = (target: HTMLElement) => {
   const rect = target.getBoundingClientRect()
   const style = window.getComputedStyle(target)
-
   const width = rect.width || pxToNumber(style.width)
   const height = rect.height || pxToNumber(style.height)
 
@@ -129,9 +107,7 @@ const cleanAvatarPlaceholderContent = (target: HTMLElement) => {
   Array.from(target.childNodes).forEach((node) => {
     if (node.nodeType === Node.TEXT_NODE) {
       const text = node.textContent || ''
-      if (!text.trim() || UPLOAD_TEXT_REGEXP.test(text)) {
-        node.remove()
-      }
+      if (!text.trim() || UPLOAD_TEXT_REGEXP.test(text)) node.remove()
       return
     }
 
@@ -142,9 +118,7 @@ const cleanAvatarPlaceholderContent = (target: HTMLElement) => {
     const isUploadHint = UPLOAD_TEXT_REGEXP.test(text)
     const isIconLike = el.classList?.contains('avatar-icon') || el.classList?.contains('resume-avatar-icon') || el.classList?.contains('resume-avatar-upload-badge')
 
-    if (isUploadHint || isIconLike) {
-      el.remove()
-    }
+    if (isUploadHint || isIconLike) el.remove()
   })
 }
 
@@ -154,14 +128,11 @@ const markAvatarShell = (el: HTMLElement) => {
   el.removeAttribute('title')
 
   const style = window.getComputedStyle(el)
-  if (style.position === 'static') {
-    el.style.position = 'relative'
-  }
+  if (style.position === 'static') el.style.position = 'relative'
 
   clampAvatarShellSize(el)
   cleanAvatarPlaceholderContent(el)
-  const state = getAvatarState(el)
-  setAvatarState(el, state)
+  setAvatarState(el, getAvatarState(el))
 }
 
 const wrapAvatarImage = (img: HTMLImageElement) => {
@@ -222,11 +193,25 @@ const enhanceAvatarTargets = () => {
   candidates.forEach(markAvatarTarget)
 }
 
+const hasPseudoBeforeMarker = (el: HTMLElement) => {
+  const before = window.getComputedStyle(el, '::before')
+  const hasContent = before.content && before.content !== 'none' && before.content !== 'normal' && before.content !== '""'
+  const isSmallAbsoluteMarker = before.position === 'absolute' && pxToNumber(before.width) <= 24 && pxToNumber(before.height) <= 24
+  return Boolean(hasContent || isSmallAbsoluteMarker)
+}
+
+const isNativeList = (list: HTMLElement) => {
+  const style = window.getComputedStyle(list)
+  return style.listStyleType !== 'none'
+}
+
 const normalizeNativeLists = () => {
   const container = getResumeContainer()
   if (!container) return
 
   container.querySelectorAll<HTMLElement>('ul, ol').forEach((list) => {
+    if (!isNativeList(list)) return
+
     list.classList.add('resume-safe-list')
     list.style.listStylePosition = 'outside'
     list.style.paddingLeft = list.tagName.toLowerCase() === 'ol' ? '1.65em' : '1.45em'
@@ -234,6 +219,10 @@ const normalizeNativeLists = () => {
   })
 
   container.querySelectorAll<HTMLElement>('li').forEach((item) => {
+    const parentList = item.parentElement as HTMLElement | null
+    if (!parentList || !['UL', 'OL'].includes(parentList.tagName) || !isNativeList(parentList)) return
+    if (hasPseudoBeforeMarker(item)) return
+
     item.classList.add('resume-safe-list-item')
     item.style.listStylePosition = 'outside'
     item.style.textIndent = '0'
@@ -294,47 +283,13 @@ const normalizeCustomBulletLists = () => {
   container.querySelectorAll<HTMLElement>('li > span:first-child, li > i:first-child, li > b:first-child, li > strong:first-child').forEach((marker) => {
     const text = marker.textContent?.trim() || ''
     if (!BULLET_CHARS.includes(text) && text.length > 2) return
-
     marker.classList.add('resume-safe-inline-marker')
-  })
-}
-
-const normalizeBeforeMarkers = () => {
-  const container = getResumeContainer()
-  if (!container) return
-
-  container.querySelectorAll<HTMLElement>('section, article, div, li, p').forEach((el) => {
-    if (el.classList.contains('resume-avatar-placeholder')) return
-
-    const before = window.getComputedStyle(el, '::before')
-    const content = stripCssContentQuotes(before.content)
-    const beforeWidth = pxToNumber(before.width)
-    const beforeHeight = pxToNumber(before.height)
-    const hasTextLabel = Boolean(content && !BULLET_CHARS.includes(content) && content.length <= 12)
-    const beforeLooksLikeDot = before.position === 'absolute' && beforeWidth <= 18 && beforeHeight <= 18
-
-    if (!hasTextLabel && !beforeLooksLikeDot) return
-
-    const elementStyle = window.getComputedStyle(el)
-    const left = pxToNumber(before.left)
-    const paddingLeft = pxToNumber(elementStyle.paddingLeft)
-    const labelWidth = hasTextLabel ? measureTextWidth(content, before) : beforeWidth
-    const requiredPadding = Math.ceil(Math.max(28, left + labelWidth + 10))
-
-    if (paddingLeft >= requiredPadding) return
-
-    el.classList.add('resume-safe-before-marker')
-    if (elementStyle.position === 'static') {
-      el.style.position = 'relative'
-    }
-    el.style.paddingLeft = `${requiredPadding}px`
   })
 }
 
 const enhanceListLayout = () => {
   normalizeNativeLists()
   normalizeCustomBulletLists()
-  normalizeBeforeMarkers()
 }
 
 const enhanceResumeDom = () => {
@@ -343,9 +298,7 @@ const enhanceResumeDom = () => {
 }
 
 const scheduleEnhance = () => {
-  if (enhanceTimer) {
-    window.clearTimeout(enhanceTimer)
-  }
+  if (enhanceTimer) window.clearTimeout(enhanceTimer)
 
   enhanceTimer = window.setTimeout(() => {
     enhanceResumeDom()
@@ -442,9 +395,7 @@ const handleAvatarMouseUp = () => {
   window.removeEventListener('mousemove', handleAvatarMouseMove, true)
   window.removeEventListener('mouseup', handleAvatarMouseUp, true)
 
-  if (dragState.moved) {
-    saveCurrentResumeHtml()
-  }
+  if (dragState.moved) saveCurrentResumeHtml()
 
   window.setTimeout(() => {
     dragState = null
@@ -514,7 +465,7 @@ const handleAvatarFileChange = (event: Event) => {
     input.value = ''
   }
   reader.onerror = () => {
-    ElMessage.error('图片读取失败，请重新选择')
+    ElMessage.error('图片读取失败')
     input.value = ''
   }
   reader.readAsDataURL(file)
@@ -631,20 +582,17 @@ watch(
   }
 
   ul.resume-safe-list,
-  ol.resume-safe-list,
-  .resume-container ul,
-  .resume-container ol {
+  ol.resume-safe-list {
     list-style-position: outside !important;
     margin-left: 0 !important;
     padding-left: 1.45em !important;
   }
 
-  .resume-container ol {
+  ol.resume-safe-list {
     padding-left: 1.65em !important;
   }
 
-  li.resume-safe-list-item,
-  .resume-container li {
+  li.resume-safe-list-item {
     list-style-position: outside !important;
     text-indent: 0 !important;
     padding-left: 0.28em !important;
@@ -653,7 +601,7 @@ watch(
     overflow: visible !important;
   }
 
-  .resume-container li::marker {
+  li.resume-safe-list-item::marker {
     font-size: 0.95em;
   }
 
@@ -668,11 +616,6 @@ watch(
   .resume-safe-custom-bullet {
     text-indent: 0 !important;
     line-height: 1.55 !important;
-  }
-
-  .resume-safe-before-marker {
-    text-indent: 0 !important;
-    overflow: visible !important;
   }
 }
 
