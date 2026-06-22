@@ -116,7 +116,7 @@
               type="info"
               :closable="false"
               show-icon
-              title="项目经历使用结构化表单填写。公司项目可填写公司和部门；个人项目会隐藏公司、部门字段。"
+              title="项目经历将按结构化信息生成，并尽量用 STAR 法则组织为：背景/目标、行动、结果。"
             />
 
             <div class="project-toolbar">
@@ -148,22 +148,19 @@
 
             <div class="manual-panel">
               <el-form label-position="top">
-                <el-form-item label="项目类型">
-                  <el-radio-group v-model="currentProject.projectType" @change="handleProjectTypeChange">
-                    <el-radio-button label="company">公司项目</el-radio-button>
-                    <el-radio-button label="personal">个人项目</el-radio-button>
-                  </el-radio-group>
-                </el-form-item>
-
                 <div class="form-grid">
-                  <template v-if="currentProject.projectType === 'company'">
-                    <el-form-item label="公司">
-                      <el-input v-model="currentProject.company" placeholder="例如：腾讯 / 字节跳动 / XX 科技有限公司" clearable />
-                    </el-form-item>
-                    <el-form-item label="部门">
-                      <el-input v-model="currentProject.department" placeholder="例如：数据平台部 / AI 应用团队" clearable />
-                    </el-form-item>
-                  </template>
+                  <el-form-item label="项目类型">
+                    <el-radio-group v-model="currentProject.projectType" @change="handleProjectTypeChange">
+                      <el-radio-button label="company">公司项目</el-radio-button>
+                      <el-radio-button label="personal">个人项目</el-radio-button>
+                    </el-radio-group>
+                  </el-form-item>
+                  <el-form-item v-if="currentProject.projectType === 'company'" label="公司">
+                    <el-input v-model="currentProject.company" placeholder="例如：腾讯 / 字节跳动 / XX 科技有限公司" clearable />
+                  </el-form-item>
+                  <el-form-item v-if="currentProject.projectType === 'company'" label="部门">
+                    <el-input v-model="currentProject.department" placeholder="例如：数据平台部 / AI 应用团队" clearable />
+                  </el-form-item>
                   <el-form-item label="项目名称">
                     <el-input v-model="currentProject.name" placeholder="例如：AI 简历生成器" clearable />
                   </el-form-item>
@@ -178,30 +175,30 @@
                   </el-form-item>
                 </div>
 
-                <el-form-item label="项目简介">
+                <el-form-item label="项目背景 / 目标（STAR：S/T）">
                   <el-input
                     v-model="currentProject.description"
                     type="textarea"
                     :rows="3"
-                    placeholder="这个项目面向谁、解决什么问题、核心功能是什么。"
+                    placeholder="这个项目面向谁、解决什么问题、为什么要做、目标是什么。没有明确背景时可只写项目简介。"
                   />
                 </el-form-item>
 
-                <el-form-item label="负责内容">
+                <el-form-item label="负责内容 / 具体行动（STAR：A）">
                   <el-input
                     v-model="currentProject.responsibilities"
                     type="textarea"
                     :rows="4"
-                    placeholder="建议写你本人负责的模块、方案设计、开发实现、协作推进等。"
+                    placeholder="建议写你本人负责的模块、技术方案、协作推进、问题排查、组件沉淀、工程化改造等。"
                   />
                 </el-form-item>
 
-                <el-form-item label="项目成果 / 量化指标">
+                <el-form-item label="项目成果 / 真实影响（STAR：R）">
                   <el-input
                     v-model="currentProject.achievements"
                     type="textarea"
                     :rows="3"
-                    placeholder="例如：将生成耗时降低 30%；支持 10+ 模板；提升投递效率等。没有真实数据时可不填。"
+                    placeholder="例如：将生成耗时降低 30%；支持 10+ 模板；提升投递效率等。没有真实数据时可写非量化影响，或不填。"
                   />
                 </el-form-item>
 
@@ -210,7 +207,7 @@
                     v-model="currentProject.rawNotes"
                     type="textarea"
                     :rows="3"
-                    placeholder="写得粗糙也没关系，可以先记录背景、难点、亮点，后续让 AI 优化。"
+                    placeholder="写得粗糙也没关系，可以先记录难点、亮点、协作对象、复盘等，后续让 AI 优化。"
                   />
                 </el-form-item>
               </el-form>
@@ -221,7 +218,7 @@
                 <el-icon><MagicStick /></el-icon>
                 AI 优化全部项目经历
               </el-button>
-              <span class="tip-text">需要先配置 API Key；未配置时仍可保存结构化项目。</span>
+              <span class="tip-text">AI 会基于已填写事实按 STAR 逻辑润色；不会补充未填写的公司、指标或经历。</span>
             </div>
           </div>
 
@@ -249,15 +246,17 @@
               <div v-if="filledProjects.length" class="project-preview-list">
                 <div v-for="(project, index) in filledProjects" :key="project.id" class="project-preview-item">
                   <strong>{{ index + 1 }}. {{ project.name || project.company || '未命名项目' }}</strong>
-                  <p><strong>类型：</strong>{{ project.projectType === 'company' ? '公司项目' : '个人项目' }}</p>
-                  <p v-if="project.projectType === 'company' && project.company">公司：{{ project.company }}</p>
-                  <p v-if="project.projectType === 'company' && project.department">部门：{{ project.department }}</p>
+                  <p>类型：{{ project.projectType === 'company' ? '公司项目' : '个人项目' }}</p>
+                  <template v-if="project.projectType === 'company'">
+                    <p v-if="project.company">公司：{{ project.company }}</p>
+                    <p v-if="project.department">部门：{{ project.department }}</p>
+                  </template>
                   <p v-if="project.dateRange">时间：{{ project.dateRange }}</p>
                   <p v-if="project.role">角色：{{ project.role }}</p>
                   <p v-if="project.techStack">技术栈：{{ project.techStack }}</p>
-                  <p v-if="project.description">简介：{{ project.description }}</p>
-                  <p v-if="project.responsibilities">负责：{{ project.responsibilities }}</p>
-                  <p v-if="project.achievements">成果：{{ project.achievements }}</p>
+                  <p v-if="project.description">背景/目标：{{ project.description }}</p>
+                  <p v-if="project.responsibilities">行动：{{ project.responsibilities }}</p>
+                  <p v-if="project.achievements">结果：{{ project.achievements }}</p>
                 </div>
               </div>
               <span v-else>未填写</span>
@@ -348,6 +347,17 @@ const hasProjectContent = (project: CandidateProjectExperience) => {
 
 const filledProjects = computed(() => projects.value.filter(hasProjectContent))
 
+const normalizeLocalProject = (project: CandidateProjectExperience): CandidateProjectExperience => {
+  const projectType = project.projectType === 'personal' ? 'personal' : 'company'
+  return {
+    ...onboardingStore.createEmptyProject(),
+    ...project,
+    projectType,
+    company: projectType === 'company' ? project.company : '',
+    department: projectType === 'company' ? project.department : ''
+  }
+}
+
 const notifyApiConfigChanged = () => {
   window.dispatchEvent(new CustomEvent('resume-api-config-changed'))
 }
@@ -397,17 +407,6 @@ const ensureProject = () => {
     const project = onboardingStore.createEmptyProject()
     projects.value = [project]
     activeProjectId.value = project.id
-  }
-}
-
-const normalizeLocalProject = (project: CandidateProjectExperience): CandidateProjectExperience => {
-  const projectType = project.projectType === 'personal' ? 'personal' : 'company'
-  return {
-    ...onboardingStore.createEmptyProject(),
-    ...project,
-    projectType,
-    company: projectType === 'company' ? project.company : '',
-    department: projectType === 'company' ? project.department : ''
   }
 }
 
@@ -479,9 +478,9 @@ const formatProjectsAsText = () => {
         project.dateRange ? `项目时间：${project.dateRange}` : '',
         project.role ? `担任角色：${project.role}` : '',
         project.techStack ? `技术栈：${project.techStack}` : '',
-        project.description ? `项目简介：${project.description}` : '',
-        project.responsibilities ? `负责内容：${project.responsibilities}` : '',
-        project.achievements ? `项目成果：${project.achievements}` : '',
+        project.description ? `项目背景/目标：${project.description}` : '',
+        project.responsibilities ? `具体行动/负责内容：${project.responsibilities}` : '',
+        project.achievements ? `真实结果/项目成果：${project.achievements}` : '',
         project.rawNotes ? `补充信息：${project.rawNotes}` : ''
       ].filter(Boolean).join('\n')
     })
@@ -520,7 +519,7 @@ const normalizeAiProject = (project: Record<string, unknown>, index: number): Ca
 }
 
 const buildPolishPrompt = () => {
-  return `请基于以下候选人信息，提炼并优化多个项目经历。要求：\n1. 每个项目都保留为独立项目，不要合并不同项目。\n2. 项目经历要适合简历展示，可以突出项目类型、公司、部门、项目名称、时间、角色、技术栈、职责、技术方案、难点和结果。\n3. 可以润色用户已提供的信息，但严禁编造用户未提供的公司、部门、项目、指标、时间或成果。\n4. 个人项目不得生成公司、部门、雇主、外包归属等公司项目信息。\n5. 缺少指标时不要编造数字；可以保守改写为“提升了交付效率”等非量化表达。\n\n基础信息：\n${JSON.stringify(basicInfo, null, 2)}\n\n项目经历：\n${formatProjectsAsText()}`
+  return `请基于以下候选人信息，提炼并优化多个项目经历。要求：\n1. 每个项目都保留为独立项目，不要合并不同项目。\n2. 使用 STAR 法则组织项目表达，但不要机械输出 S/T/A/R 字母标题；最终可以自然呈现为“项目简介/背景目标”“职责与落地/具体行动”“关键成果/项目结果”。\n3. S/T：基于用户已填写的项目简介、背景或目标进行概括；缺失时不要编造。\n4. A：重点改写用户本人负责内容、技术方案、协作推进、问题排查、组件沉淀、工程化改造等具体行动。\n5. R：只基于用户提供的真实成果或指标表达结果；没有真实量化数据时不要编造数字，可以使用保守的非量化结果。\n6. 项目经历要适合简历展示，可以突出项目类型、公司、部门、项目名称、时间、角色、技术栈、职责、技术方案、难点和结果。\n7. 可以润色用户已提供的信息，但严禁编造用户未提供的公司、部门、项目、指标、时间或成果。\n8. 个人项目不得生成公司、部门、雇主、外包归属等公司项目信息。\n\n基础信息：\n${JSON.stringify(basicInfo, null, 2)}\n\n项目经历：\n${formatProjectsAsText()}`
 }
 
 const handlePolishProject = async () => {
