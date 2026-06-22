@@ -52,9 +52,13 @@ export interface CandidateBasicInfo {
 // 项目经历来源
 export type ProjectExperienceSource = 'manual' | 'qa' | 'ai-polished'
 
+// 项目类型
+export type CandidateProjectType = 'company' | 'personal'
+
 // 首次引导中收集的单个项目经历
 export interface CandidateProjectExperience {
   id: string
+  projectType: CandidateProjectType
   company: string
   department: string
   name: string
