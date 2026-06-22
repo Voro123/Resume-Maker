@@ -27,26 +27,14 @@ let dragState: {
   moved: boolean
 } | null = null
 
-const AVATAR_KEYWORDS = [
-  'avatar',
-  'photo',
-  'portrait',
-  'headshot',
-  'profile-img',
-  'profile-image',
-  'resume-avatar-placeholder',
-  '个人照片',
-  '头像',
-  '照片'
-]
-
+const EXPLICIT_AVATAR_SELECTOR = '.resume-avatar-placeholder, [data-resume-avatar-upload="true"]'
 const BULLET_CHARS = ['•', '·', '●', '○', '▪', '▫', '◦', '◆', '◇', '-', '–']
 const UPLOAD_TEXT_REGEXP = /点击|上传|替换|头像|照片/g
 const DEFAULT_AVATAR_STATE = { x: 0, y: 0, scale: 1 }
 const MIN_AVATAR_SCALE = 0.7
 const MAX_AVATAR_SCALE = 3
+const MAX_AVATAR_SIZE = 180
 
-const normalizeText = (value: string | null | undefined) => (value || '').toLowerCase()
 const pxToNumber = (value: string) => Number.parseFloat(value || '0') || 0
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value))
 
@@ -66,21 +54,6 @@ const measureTextWidth = (text: string, style: CSSStyleDeclaration) => {
 
   context.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`
   return context.measureText(text).width
-}
-
-const hasAvatarKeyword = (el: Element) => {
-  const attrs = [
-    el.className?.toString(),
-    el.id,
-    el.getAttribute('alt'),
-    el.getAttribute('aria-label'),
-    el.getAttribute('data-role')
-  ]
-    .filter(Boolean)
-    .join(' ')
-
-  const normalized = normalizeText(attrs)
-  return AVATAR_KEYWORDS.some((keyword) => normalized.includes(keyword.toLowerCase()))
 }
 
 const getResumeContent = () => document.querySelector('.resume-content') as HTMLElement | null
@@ -118,32 +91,38 @@ const resetAvatarState = (target: HTMLElement) => {
   setAvatarState(target, DEFAULT_AVATAR_STATE)
 }
 
-const isLikelyAvatarElement = (el: HTMLElement) => {
-  if (hasAvatarKeyword(el)) return true
+const isTopAvatarImage = (img: HTMLImageElement) => {
+  const container = getResumeContainer()
+  if (!container) return false
 
-  const parent = el.parentElement
-  if (parent && hasAvatarKeyword(parent)) return true
+  const images = Array.from(container.querySelectorAll('img'))
+  const rect = img.getBoundingClientRect()
+  const containerRect = container.getBoundingClientRect()
+  const nearTop = rect.top - containerRect.top < 260
+  const avatarLikeSize = rect.width >= 40 && rect.width <= MAX_AVATAR_SIZE && rect.height >= 40 && rect.height <= MAX_AVATAR_SIZE
 
-  if (el.tagName.toLowerCase() === 'img') {
-    const container = getResumeContainer()
-    if (!container) return false
+  return images[0] === img || (nearTop && avatarLikeSize)
+}
 
-    const images = Array.from(container.querySelectorAll('img'))
-    const rect = el.getBoundingClientRect()
-    const containerRect = container.getBoundingClientRect()
-    const nearTop = rect.top - containerRect.top < 260
-    const avatarLikeSize = rect.width >= 40 && rect.width <= 180 && rect.height >= 40 && rect.height <= 180
+const isExplicitAvatarTarget = (el: HTMLElement) => {
+  return el.matches(EXPLICIT_AVATAR_SELECTOR)
+}
 
-    return images[0] === el || (nearTop && avatarLikeSize)
+const clampAvatarShellSize = (target: HTMLElement) => {
+  const rect = target.getBoundingClientRect()
+  const style = window.getComputedStyle(target)
+
+  const width = rect.width || pxToNumber(style.width)
+  const height = rect.height || pxToNumber(style.height)
+
+  if (width > MAX_AVATAR_SIZE) {
+    target.style.width = `${MAX_AVATAR_SIZE}px`
+    target.style.maxWidth = `${MAX_AVATAR_SIZE}px`
   }
-
-  const style = window.getComputedStyle(el)
-  const hasBackgroundImage = style.backgroundImage && style.backgroundImage !== 'none'
-  if (!hasBackgroundImage) return false
-
-  const rect = el.getBoundingClientRect()
-  const isAvatarLikeBlock = rect.width >= 40 && rect.width <= 180 && rect.height >= 40 && rect.height <= 180
-  return isAvatarLikeBlock && Boolean(el.closest('.resume-container'))
+  if (height > MAX_AVATAR_SIZE) {
+    target.style.height = `${MAX_AVATAR_SIZE}px`
+    target.style.maxHeight = `${MAX_AVATAR_SIZE}px`
+  }
 }
 
 const cleanAvatarPlaceholderContent = (target: HTMLElement) => {
@@ -179,6 +158,7 @@ const markAvatarShell = (el: HTMLElement) => {
     el.style.position = 'relative'
   }
 
+  clampAvatarShellSize(el)
   cleanAvatarPlaceholderContent(el)
   const state = getAvatarState(el)
   setAvatarState(el, state)
@@ -188,11 +168,13 @@ const wrapAvatarImage = (img: HTMLImageElement) => {
   const parent = img.parentElement
   if (!parent) return img
 
-  const existingShell = img.closest<HTMLElement>('.resume-avatar-placeholder, [data-resume-avatar-upload="true"]')
+  const existingShell = img.closest<HTMLElement>(EXPLICIT_AVATAR_SELECTOR)
   if (existingShell) {
     markAvatarShell(existingShell)
     return existingShell
   }
+
+  if (!isTopAvatarImage(img)) return img
 
   const rect = img.getBoundingClientRect()
   const computed = window.getComputedStyle(img)
@@ -217,6 +199,7 @@ const wrapAvatarImage = (img: HTMLImageElement) => {
   img.style.display = 'block'
   img.style.borderRadius = 'inherit'
 
+  clampAvatarShellSize(shell)
   resetAvatarState(shell)
   return shell
 }
@@ -227,6 +210,7 @@ const markAvatarTarget = (el: HTMLElement) => {
     return
   }
 
+  if (!isExplicitAvatarTarget(el)) return
   markAvatarShell(el)
 }
 
@@ -234,8 +218,8 @@ const enhanceAvatarTargets = () => {
   const container = getResumeContainer()
   if (!container) return
 
-  const candidates = Array.from(container.querySelectorAll<HTMLElement>('img, .resume-avatar-placeholder, [data-resume-avatar-upload="true"], [class*="avatar" i], [class*="photo" i], [class*="portrait" i], [class*="headshot" i], [id*="avatar" i], [id*="photo" i]'))
-  candidates.filter(isLikelyAvatarElement).forEach(markAvatarTarget)
+  const candidates = Array.from(container.querySelectorAll<HTMLElement>('img, .resume-avatar-placeholder, [data-resume-avatar-upload="true"]'))
+  candidates.forEach(markAvatarTarget)
 }
 
 const normalizeNativeLists = () => {
@@ -605,8 +589,10 @@ watch(
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    min-width: 64px;
-    min-height: 64px;
+    min-width: 48px;
+    min-height: 48px;
+    max-width: 180px !important;
+    max-height: 180px !important;
     background: rgba(255, 255, 255, 0.08);
     transition: box-shadow 0.2s ease, outline 0.2s ease, filter 0.2s ease;
     user-select: none;
