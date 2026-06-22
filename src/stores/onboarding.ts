@@ -4,6 +4,7 @@ import type {
   CandidateBasicInfo,
   CandidateProfile,
   CandidateProjectExperience,
+  CandidateProjectType,
   ProjectExperienceSource
 } from '@/types/resume'
 
@@ -26,6 +27,7 @@ const createEmptyBasicInfo = (): CandidateBasicInfo => ({
 
 const createEmptyProject = (): CandidateProjectExperience => ({
   id: createId(),
+  projectType: 'company',
   company: '',
   department: '',
   name: '',
@@ -39,12 +41,23 @@ const createEmptyProject = (): CandidateProjectExperience => ({
   source: 'manual'
 })
 
-const normalizeProject = (project: Partial<CandidateProjectExperience>): CandidateProjectExperience => ({
-  ...createEmptyProject(),
-  ...project,
-  id: project.id || createId(),
-  source: project.source || 'manual'
-})
+const inferProjectType = (project: Partial<CandidateProjectExperience>): CandidateProjectType => {
+  if (project.projectType === 'personal' || project.projectType === 'company') return project.projectType
+  return project.company || project.department ? 'company' : 'personal'
+}
+
+const normalizeProject = (project: Partial<CandidateProjectExperience>): CandidateProjectExperience => {
+  const projectType = inferProjectType(project)
+  return {
+    ...createEmptyProject(),
+    ...project,
+    id: project.id || createId(),
+    projectType,
+    company: projectType === 'company' ? project.company || '' : '',
+    department: projectType === 'company' ? project.department || '' : '',
+    source: project.source || 'manual'
+  }
+}
 
 const migrateLegacyProfile = (profile: CandidateProfile): CandidateProfile => {
   if (Array.isArray(profile.projects)) {
@@ -60,6 +73,7 @@ const migrateLegacyProfile = (profile: CandidateProfile): CandidateProfile => {
     projects: legacyProject
       ? [
           normalizeProject({
+            projectType: 'personal',
             name: '项目经历',
             rawNotes: legacyProject,
             description: legacyProject,
@@ -108,8 +122,13 @@ const formatProjectForPrompt = (project: CandidateProjectExperience, index: numb
   if (!hasProjectContent(project)) return ''
 
   const projectBlock = compactLines([
-    ['公司', project.company],
-    ['部门', project.department],
+    ['项目类型', project.projectType === 'company' ? '公司项目' : '个人项目'],
+    ...(project.projectType === 'company'
+      ? ([
+          ['公司', project.company],
+          ['部门', project.department]
+        ] as Array<[string, string]>)
+      : []),
     ['项目名称', project.name],
     ['项目时间', project.dateRange],
     ['担任角色', project.role],
@@ -206,7 +225,7 @@ export const useOnboardingStore = defineStore('onboarding', () => {
       sections.push(`\n### 用户填写的项目经历\n${projectBlocks}`)
     }
 
-    sections.push('\n## 事实使用规则\n- 必须优先使用以上用户真实信息。\n- 严禁生成用户未提供的 GitHub、个人网站、邮箱、电话、公司、部门、学校、证书、奖项、工作经历、项目经历、项目名称、项目时间、项目成果或量化指标。\n- 信息缺失时请省略对应模块，或在必要位置写“待补充”；不要用示例信息、虚构链接或虚构经历补齐。\n- 可以对用户已提供的项目职责和成果进行语言润色，但不得新增未提供的项目背景、技术栈、指标或结果。')
+    sections.push('\n## 事实使用规则\n- 必须优先使用以上用户真实信息。\n- 严禁生成用户未提供的 GitHub、个人网站、邮箱、电话、公司、部门、学校、证书、奖项、工作经历、项目经历、项目名称、项目时间、项目成果或量化指标。\n- 个人项目不得生成公司、部门、雇主、外包归属等公司项目信息。\n- 信息缺失时请省略对应模块，或在必要位置写“待补充”；不要用示例信息、虚构链接或虚构经历补齐。\n- 可以对用户已提供的项目职责和成果进行语言润色，但不得新增未提供的项目背景、技术栈、指标或结果。')
 
     return sections.join('\n')
   })
