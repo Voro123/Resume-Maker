@@ -35,9 +35,17 @@ const MIN_AVATAR_SCALE = 0.7
 const MAX_AVATAR_SCALE = 3
 const MAX_AVATAR_SIZE = 180
 const MIN_PSEUDO_LIST_PADDING = 18
+const TECH_TERMS = [
+  'TypeScript', 'JavaScript', 'Vue Router', 'Element Plus', 'Tailwind CSS', 'OpenAI API', 'Function Calling',
+  'LangChain', 'Ant Design', 'TDesign', 'ECharts', 'AntV X6', 'WebSocket', 'FastAPI', 'Node.js', 'Python',
+  'React', 'Next.js', 'Nuxt', 'Vue 3', 'Vue2', 'Vue', 'Vite', 'Webpack', 'Pinia', 'Redux', 'Zustand',
+  'MySQL', 'PostgreSQL', 'MongoDB', 'Redis', 'Docker', 'Kubernetes', 'Nginx', 'Git', 'Jest', 'Vitest',
+  'Playwright', 'Cypress', 'RAG', 'LLM', 'AI Agent', 'Agent', 'Chroma', 'Vector DB', '向量数据库'
+].sort((a, b) => b.length - a.length)
 
 const pxToNumber = (value: string) => Number.parseFloat(value || '0') || 0
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value))
+const escapeHtml = (value: string) => value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 
 const getResumeContent = () => document.querySelector('.resume-content') as HTMLElement | null
 const getResumeContainer = () => document.querySelector('.resume-content .resume-container') as HTMLElement | null
@@ -323,6 +331,71 @@ const normalizeCustomBulletLists = () => {
   })
 }
 
+const parseTechTerms = (rawText: string) => {
+  const labelMatch = rawText.match(/^(技术栈|技术关键词|Tech Stack|Stack)[：:]\s*/i)
+  const label = labelMatch?.[0] || ''
+  const text = rawText.slice(label.length).replace(/[，、,/|]+/g, ' ').replace(/\s+/g, ' ').trim()
+  const terms: string[] = []
+  let cursor = 0
+
+  while (cursor < text.length) {
+    if (/\s/.test(text[cursor])) {
+      cursor += 1
+      continue
+    }
+
+    const rest = text.slice(cursor)
+    const matched = TECH_TERMS.find((term) => {
+      const part = rest.slice(0, term.length)
+      const next = rest[term.length]
+      return part.toLowerCase() === term.toLowerCase() && (!next || /\s/.test(next))
+    })
+
+    if (matched) {
+      terms.push(matched)
+      cursor += matched.length
+      continue
+    }
+
+    const nextSpace = rest.search(/\s/)
+    cursor += nextSpace === -1 ? rest.length : nextSpace + 1
+  }
+
+  return { label, terms: Array.from(new Set(terms)) }
+}
+
+const shouldEnhanceTechStackElement = (el: HTMLElement, terms: string[], text: string) => {
+  if (terms.length < 3) return false
+  if (el.classList.contains('resume-enhanced-tech-stack')) return false
+  if (el.querySelector('.resume-tech-tag')) return false
+  if (el.querySelector('p, div, ul, ol, li, table')) return false
+  if (text.length > 180) return false
+
+  const attrs = [el.className?.toString(), el.id, el.getAttribute('data-section')].filter(Boolean).join(' ')
+  const hasTechContext = /tech|stack|skill|技术栈|技能/i.test(`${attrs} ${text}`)
+  const looksLikePlainTechLine = !/[一-龥]/.test(text.replace(/技术栈|技术关键词/g, ''))
+
+  return hasTechContext || looksLikePlainTechLine
+}
+
+const enhanceTechStackTags = () => {
+  const container = getResumeContainer()
+  if (!container) return
+
+  container.querySelectorAll<HTMLElement>('span, p, div').forEach((el) => {
+    const text = el.textContent?.trim() || ''
+    if (!text) return
+
+    const { label, terms } = parseTechTerms(text)
+    if (!shouldEnhanceTechStackElement(el, terms, text)) return
+
+    el.classList.add('resume-enhanced-tech-stack')
+    el.innerHTML = `${label ? `<span class="resume-tech-stack-label">${escapeHtml(label.trim())}</span>` : ''}${terms
+      .map((term) => `<span class="resume-tech-tag" contenteditable="true">${escapeHtml(term)}</span>`)
+      .join('')}`
+  })
+}
+
 const enhanceListLayout = () => {
   repairPseudoBeforeListSpacing()
   normalizeNativeLists()
@@ -333,6 +406,7 @@ const enhanceListLayout = () => {
 const enhanceResumeDom = () => {
   enhanceAvatarTargets()
   enhanceListLayout()
+  enhanceTechStackTags()
 }
 
 const scheduleEnhance = () => {
@@ -617,6 +691,32 @@ watch(
     will-change: transform;
     user-select: none;
     pointer-events: none;
+  }
+
+  .resume-enhanced-tech-stack {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    align-items: center !important;
+    gap: 5px 6px !important;
+    line-height: 1.7 !important;
+  }
+
+  .resume-tech-stack-label {
+    font-weight: 600 !important;
+    margin-right: 2px !important;
+    color: inherit !important;
+  }
+
+  .resume-tech-tag {
+    display: inline-flex !important;
+    align-items: center !important;
+    padding: 1px 6px !important;
+    border-radius: 4px !important;
+    border: 1px solid rgba(59, 130, 246, 0.22) !important;
+    background: rgba(59, 130, 246, 0.08) !important;
+    color: inherit !important;
+    line-height: 1.45 !important;
+    white-space: nowrap !important;
   }
 
   ul.resume-safe-list,
