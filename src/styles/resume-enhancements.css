@@ -1,0 +1,40 @@
+.resume-content .resume-enhanced-tech-stack {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  align-items: center !important;
+  gap: 5px 6px !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  box-sizing: border-box !important;
+  white-space: normal !important;
+  overflow: visible !important;
+  background: transparent !important;
+  color: inherit !important;
+}
+
+.resume-content .resume-enhanced-tech-stack * {
+  box-sizing: border-box !important;
+}
+
+.resume-content .resume-enhanced-tech-stack .resume-tech-stack-label {
+  flex: 0 0 auto !important;
+  margin-right: 2px !important;
+  background: transparent !important;
+  white-space: nowrap !important;
+}
+
+.resume-content .resume-enhanced-tech-stack .resume-tech-tag {
+  flex: 0 0 auto !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  max-width: 100% !important;
+  margin: 0 !important;
+  padding: 1px 6px !important;
+  border-radius: 4px !important;
+  border: 1px solid rgba(59, 130, 246, 0.22) !important;
+  background: rgba(59, 130, 246, 0.08) !important;
+  color: inherit !important;
+  line-height: 1.45 !important;
+  white-space: nowrap !important;
+}
