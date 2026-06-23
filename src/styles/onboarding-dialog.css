@@ -1,0 +1,14 @@
+/* 项目经历表单布局微调：项目类型独占一整行，后续字段继续两列排列 */
+.onboarding-dialog .manual-panel .form-grid > .el-form-item:first-child {
+  grid-column: 1 / -1;
+}
+
+.onboarding-dialog .manual-panel .form-grid > .el-form-item:first-child .el-radio-group {
+  display: inline-flex;
+}
+
+@media (max-width: 768px) {
+  .onboarding-dialog .manual-panel .form-grid > .el-form-item:first-child {
+    grid-column: auto;
+  }
+}
