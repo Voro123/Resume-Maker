@@ -4,7 +4,6 @@
     <ResumeDomEnhancer />
     <ResumeSelectionFormatToolbar />
     <ResumeElementSelectorLayer />
-    <ResumeBlockSizeEnhancer />
 
     <!-- 左侧：提示词输入 -->
     <div class="editor-left" :class="{ 'collapsed': leftCollapsed }">
@@ -73,7 +72,6 @@ import ResumePreview from '@/components/ResumePreview.vue'
 import ResumeDomEnhancer from '@/components/ResumeDomEnhancer.vue'
 import ResumeSelectionFormatToolbar from '@/components/ResumeSelectionFormatToolbar.vue'
 import ResumeElementSelectorLayer from '@/components/ResumeElementSelectorLayer.vue'
-import ResumeBlockSizeEnhancer from '@/components/ResumeBlockSizeEnhancer.vue'
 import DevGitPullButton from '@/components/DevGitPullButton.vue'
 import ChatPanel from '@/components/ChatPanel.vue'
 import OnboardingDialog from '@/components/OnboardingDialog.vue'
@@ -320,9 +318,7 @@ const handleCopyHTML = async () => {
   :deep(.element-select-overlay),
   :deep(.element-selected-overlay),
   :deep(.resume-ai-selector-hover-overlay),
-  :deep(.resume-ai-selector-selected-overlay),
-  :deep(.element-resize-width-handle),
-  :deep(.element-resize-both-handle) {
+  :deep(.resume-ai-selector-selected-overlay) {
     display: none !important;
   }
   
