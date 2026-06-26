@@ -30,7 +30,7 @@ export type ReasoningCallback = (data: {
 export async function configureBackend(config: Partial<APIConfig>): Promise<{
   success: boolean
   message: string
-  config: { baseURL: string; model: string }
+  config: { provider?: string; baseURL: string; model: string }
 }> {
   const response = await fetch(`${API_BASE_URL}/config`, {
     method: 'POST',
@@ -39,6 +39,7 @@ export async function configureBackend(config: Partial<APIConfig>): Promise<{
     },
     body: JSON.stringify({
       sessionId: DEFAULT_SESSION_ID,
+      provider: config.provider,
       apiKey: config.apiKey,
       baseURL: config.baseURL,
       model: config.model
