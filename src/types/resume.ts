@@ -113,8 +113,19 @@ export interface ChatMessage {
   timestamp: number
 }
 
+// API 服务商
+export type APIProvider =
+  | 'minimax'
+  | 'openai'
+  | 'deepseek'
+  | 'moonshot'
+  | 'qwen'
+  | 'zhipu'
+  | 'custom'
+
 // API 配置
 export interface APIConfig {
+  provider?: APIProvider
   apiKey: string
   baseURL: string
   model: string
