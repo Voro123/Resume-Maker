@@ -9,38 +9,7 @@
     <el-tabs v-model="activeSettingsTab" class="settings-tabs">
       <el-tab-pane label="API 配置" name="api">
         <div class="dialog-body api-settings-body">
-          <el-alert
-            type="info"
-            :closable="false"
-            show-icon
-            title="API Key 仅保存在浏览器 localStorage 中，用于调用后端生成简历和优化项目经历。"
-          />
-
-          <el-form label-position="top" class="api-config-form">
-            <el-form-item label="API Key">
-              <el-input
-                v-model="apiConfigForm.apiKey"
-                type="password"
-                placeholder="请输入 MiniMax API Key"
-                show-password
-                clearable
-              />
-            </el-form-item>
-
-            <el-form-item label="模型选择">
-              <el-select v-model="apiConfigForm.model" style="width: 100%">
-                <el-option label="MiniMax-M3" value="MiniMax-M3" />
-              </el-select>
-            </el-form-item>
-
-            <div class="api-actions">
-              <el-button type="primary" :disabled="!apiConfigForm.apiKey" @click="handleSaveApiConfig">
-                <el-icon><Check /></el-icon>
-                保存 API 配置
-              </el-button>
-              <el-button plain @click="handleResetApiConfig">清空配置</el-button>
-            </div>
-          </el-form>
+          <ApiConfigPanel @saved="notifyApiConfigChanged" @reset="notifyApiConfigChanged" />
         </div>
       </el-tab-pane>
 
@@ -290,10 +259,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
-import { Check, Delete, MagicStick, Plus } from '@element-plus/icons-vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { Delete, MagicStick, Plus } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import type { CandidateBasicInfo, CandidateProjectExperience } from '@/types/resume'
+import ApiConfigPanel from '@/components/ApiConfigPanel.vue'
 import ConfigBackupPanel from '@/components/ConfigBackupPanel.vue'
 import { generateResumeDataViaBackend } from '@/utils/backend-api'
 import { useOnboardingStore } from '@/stores/onboarding'
@@ -310,13 +280,7 @@ const isPolishing = ref(false)
 const projects = ref<CandidateProjectExperience[]>([onboardingStore.createEmptyProject()])
 const activeProjectId = ref(projects.value[0].id)
 
-const apiConfigForm = reactive({
-  apiKey: '',
-  baseURL: 'https://api.minimaxi.com/v1',
-  model: 'MiniMax-M3'
-})
-
-const basicInfo = reactive<CandidateBasicInfo>(onboardingStore.createEmptyBasicInfo())
+const basicInfo = ref<CandidateBasicInfo>(onboardingStore.createEmptyBasicInfo())
 
 const currentProject = computed<CandidateProjectExperience>(() => {
   return projects.value.find((project) => project.id === activeProjectId.value) || projects.value[0]
@@ -327,7 +291,7 @@ const currentProjectIndex = computed(() => {
 })
 
 const contactPreview = computed(() => {
-  return [basicInfo.phone, basicInfo.email, basicInfo.city].filter(Boolean).join(' / ')
+  return [basicInfo.value.phone, basicInfo.value.email, basicInfo.value.city].filter(Boolean).join(' / ')
 })
 
 const hasProjectContent = (project: CandidateProjectExperience) => {
@@ -362,46 +326,6 @@ const notifyApiConfigChanged = () => {
   window.dispatchEvent(new CustomEvent('resume-api-config-changed'))
 }
 
-const loadApiConfig = () => {
-  const savedConfig = localStorage.getItem(API_CONFIG_KEY)
-  Object.assign(apiConfigForm, {
-    apiKey: '',
-    baseURL: 'https://api.minimaxi.com/v1',
-    model: 'MiniMax-M3'
-  })
-
-  if (!savedConfig) return
-
-  try {
-    const parsed = JSON.parse(savedConfig)
-    Object.assign(apiConfigForm, {
-      apiKey: parsed.apiKey || '',
-      baseURL: parsed.baseURL || 'https://api.minimaxi.com/v1',
-      model: parsed.model || 'MiniMax-M3'
-    })
-  } catch (error) {
-    console.warn('读取 API 配置失败:', error)
-  }
-}
-
-const handleSaveApiConfig = () => {
-  if (!apiConfigForm.apiKey) {
-    ElMessage.warning('请输入 API Key')
-    return
-  }
-
-  localStorage.setItem(API_CONFIG_KEY, JSON.stringify(apiConfigForm))
-  notifyApiConfigChanged()
-  ElMessage.success('API 配置已保存')
-}
-
-const handleResetApiConfig = () => {
-  localStorage.removeItem(API_CONFIG_KEY)
-  loadApiConfig()
-  notifyApiConfigChanged()
-  ElMessage.info('已清空 API 配置')
-}
-
 const ensureProject = () => {
   if (!projects.value.length) {
     const project = onboardingStore.createEmptyProject()
@@ -411,13 +335,13 @@ const ensureProject = () => {
 }
 
 const restoreProfile = () => {
-  Object.assign(basicInfo, onboardingStore.createEmptyBasicInfo())
+  basicInfo.value = onboardingStore.createEmptyBasicInfo()
   projects.value = [onboardingStore.createEmptyProject()]
   activeProjectId.value = projects.value[0].id
 
   if (!onboardingStore.profile) return
 
-  Object.assign(basicInfo, onboardingStore.profile.basicInfo)
+  basicInfo.value = { ...onboardingStore.profile.basicInfo }
   projects.value = onboardingStore.profile.projects?.length
     ? onboardingStore.profile.projects.map(normalizeLocalProject)
     : [onboardingStore.createEmptyProject()]
@@ -426,7 +350,6 @@ const restoreProfile = () => {
 
 const reloadSavedSettings = () => {
   onboardingStore.loadFromLocalStorage()
-  loadApiConfig()
   restoreProfile()
   ensureProject()
 }
@@ -519,7 +442,7 @@ const normalizeAiProject = (project: Record<string, unknown>, index: number): Ca
 }
 
 const buildPolishPrompt = () => {
-  return `请基于以下候选人信息，提炼并优化多个项目经历。要求：\n1. 每个项目都保留为独立项目，不要合并不同项目。\n2. 使用 STAR 法则组织项目表达，但不要机械输出 S/T/A/R 字母标题；最终可以自然呈现为“项目简介/背景目标”“职责与落地/具体行动”“关键成果/项目结果”。\n3. S/T：基于用户已填写的项目简介、背景或目标进行概括；缺失时不要编造。\n4. A：重点改写用户本人负责内容、技术方案、协作推进、问题排查、组件沉淀、工程化改造等具体行动。\n5. R：只基于用户提供的真实成果或指标表达结果；没有真实量化数据时不要编造数字，可以使用保守的非量化结果。\n6. 项目经历要适合简历展示，可以突出项目类型、公司、部门、项目名称、时间、角色、技术栈、职责、技术方案、难点和结果。\n7. 可以润色用户已提供的信息，但严禁编造用户未提供的公司、部门、项目、指标、时间或成果。\n8. 个人项目不得生成公司、部门、雇主、外包归属等公司项目信息。\n\n基础信息：\n${JSON.stringify(basicInfo, null, 2)}\n\n项目经历：\n${formatProjectsAsText()}`
+  return `请基于以下候选人信息，提炼并优化多个项目经历。要求：\n1. 每个项目都保留为独立项目，不要合并不同项目。\n2. 使用 STAR 法则组织项目表达，但不要机械输出 S/T/A/R 字母标题；最终可以自然呈现为“项目简介/背景目标”“职责与落地/具体行动”“关键成果/项目结果”。\n3. S/T：基于用户已填写的项目简介、背景或目标进行概括；缺失时不要编造。\n4. A：重点改写用户本人负责内容、技术方案、协作推进、问题排查、组件沉淀、工程化改造等具体行动。\n5. R：只基于用户提供的真实成果或指标表达结果；没有真实量化数据时不要编造数字，可以使用保守的非量化结果。\n6. 项目经历要适合简历展示，可以突出项目类型、公司、部门、项目名称、时间、角色、技术栈、职责、技术方案、难点和结果。\n7. 可以润色用户已提供的信息，但严禁编造用户未提供的公司、部门、项目、指标、时间或成果。\n8. 个人项目不得生成公司、部门、雇主、外包归属等公司项目信息。\n\n基础信息：\n${JSON.stringify(basicInfo.value, null, 2)}\n\n项目经历：\n${formatProjectsAsText()}`
 }
 
 const handlePolishProject = async () => {
@@ -539,12 +462,12 @@ const handlePolishProject = async () => {
   try {
     const data = await generateResumeDataViaBackend(apiConfig, buildPolishPrompt(), {
       personal: {
-        name: basicInfo.name,
+        name: basicInfo.value.name,
         avatar: '',
-        title: basicInfo.targetRole,
-        phone: basicInfo.phone,
-        email: basicInfo.email,
-        location: basicInfo.city,
+        title: basicInfo.value.targetRole,
+        phone: basicInfo.value.phone,
+        email: basicInfo.value.email,
+        location: basicInfo.value.city,
         website: ''
       },
       rawText: formatProjectsAsText(),
@@ -568,7 +491,7 @@ const handlePolishProject = async () => {
 }
 
 const handleSave = () => {
-  onboardingStore.saveProfile(basicInfo, filledProjects.value)
+  onboardingStore.saveProfile(basicInfo.value, filledProjects.value)
   visible.value = false
   ElMessage.success('基础信息已保存，生成简历时会自动带入')
 }
@@ -602,21 +525,11 @@ onBeforeUnmount(() => {
 }
 
 .api-settings-body {
-  min-height: 280px;
+  min-height: 360px;
 }
 
 .backup-settings-body {
   min-height: 360px;
-}
-
-.api-config-form {
-  max-width: 520px;
-}
-
-.api-actions {
-  display: flex;
-  align-items: center;
-  gap: 12px;
 }
 
 .step-panel {
@@ -720,7 +633,6 @@ onBeforeUnmount(() => {
     grid-template-columns: 1fr;
   }
 
-  .api-actions,
   .project-toolbar,
   .project-toolbar-actions,
   .polish-actions,
