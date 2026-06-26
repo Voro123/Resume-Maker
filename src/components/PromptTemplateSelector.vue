@@ -5,7 +5,7 @@
       <div class="settings-status">
         <el-tag :type="isConfigured ? 'success' : 'warning'" size="small">
           <el-icon><Check v-if="isConfigured" /><Warning v-else /></el-icon>
-          {{ isConfigured ? `API 已配置 (${configForm.model})` : 'API 未配置' }}
+          {{ isConfigured ? `API 已配置 (${configuredProviderName} · ${configForm.model})` : 'API 未配置' }}
         </el-tag>
         <el-tooltip content="项目设置" placement="top">
           <el-button circle size="small" @click="handleOpenSettings(isConfigured ? 'profile' : 'api')" aria-label="项目设置">
@@ -123,20 +123,17 @@ import { ref, computed, onBeforeUnmount, onMounted } from 'vue'
 import { MagicStick, Check, InfoFilled, Setting, Warning } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { promptTemplates, getCategories } from '@/config/promptTemplates'
+import { DEFAULT_API_CONFIG, getProviderOption } from '@/config/modelProviders'
 import { useResumeStore } from '@/stores/resume'
 import { useOnboardingStore } from '@/stores/onboarding'
-import type { PromptTemplate } from '@/types/resume'
+import type { APIConfig, PromptTemplate } from '@/types/resume'
 
 const resumeStore = useResumeStore()
 const onboardingStore = useOnboardingStore()
 const API_CONFIG_KEY = 'chat-api-config'
 
 // API 配置表单
-const configForm = ref({
-  apiKey: '',
-  baseURL: 'https://api.minimaxi.com/v1',
-  model: 'MiniMax-M3'
-})
+const configForm = ref<APIConfig>({ ...DEFAULT_API_CONFIG })
 
 // 是否已配置
 const isConfigured = ref(false)
@@ -148,6 +145,10 @@ const selectedTemplate = ref<PromptTemplate | null>(null)
 const customPrompt = ref('')
 const editablePrompt = ref('')
 const isGenerating = ref(false)
+
+const configuredProviderName = computed(() => {
+  return getProviderOption(configForm.value.provider, configForm.value.baseURL).name.replace('（推荐）', '')
+})
 
 // 过滤后的模板列表
 const filteredTemplates = computed(() => {
@@ -182,22 +183,20 @@ const handleSelect = (template: PromptTemplate) => {
 
 const loadApiConfig = () => {
   const savedConfig = localStorage.getItem(API_CONFIG_KEY)
-  configForm.value = {
-    apiKey: '',
-    baseURL: 'https://api.minimaxi.com/v1',
-    model: 'MiniMax-M3'
-  }
+  configForm.value = { ...DEFAULT_API_CONFIG }
   isConfigured.value = false
 
   if (!savedConfig) return
 
   try {
-    const config = JSON.parse(savedConfig)
+    const config = JSON.parse(savedConfig) as Partial<APIConfig>
     if (config.apiKey) {
+      const provider = getProviderOption(config.provider, config.baseURL)
       configForm.value = {
+        provider: config.provider || provider.id,
         apiKey: config.apiKey,
-        baseURL: config.baseURL || 'https://api.minimaxi.com/v1',
-        model: config.model || 'MiniMax-M3'
+        baseURL: config.baseURL || provider.baseURL,
+        model: config.model || provider.recommendedModel
       }
       isConfigured.value = true
     }
