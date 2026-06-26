@@ -1,17 +1,14 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { ChatMessage, APIConfig } from '@/types/resume'
+import { DEFAULT_API_CONFIG } from '@/config/modelProviders'
 
 export const useChatStore = defineStore('chat', () => {
   // 对话消息历史
   const messages = ref<ChatMessage[]>([])
   
   // API 配置
-  const apiConfig = ref<APIConfig>({
-    apiKey: '',
-    baseURL: 'https://api.minimaxi.com/v1',
-    model: 'MiniMax-M3'
-  })
+  const apiConfig = ref<APIConfig>({ ...DEFAULT_API_CONFIG })
   
   // 加载状态
   const isLoading = ref(false)
@@ -67,7 +64,7 @@ export const useChatStore = defineStore('chat', () => {
     try {
       const config = localStorage.getItem('chat-api-config')
       if (config) {
-        apiConfig.value = JSON.parse(config)
+        apiConfig.value = { ...DEFAULT_API_CONFIG, ...JSON.parse(config) }
       }
 
       const messagesData = localStorage.getItem('chat-messages')
